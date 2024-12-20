@@ -258,7 +258,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	r_bready <= w_reset ? 1'b0 : n_bready;
 	r_mem_rsp_valid <= w_reset ? 1'b0 : n_mem_rsp_valid;
 	r_addr <= w_reset ? 32'hdeadbee0 : n_addr;
-	r_last_addr <= w_reset <= 32'hcafebeb0 : n_last_addr;
+	r_last_addr <= w_reset ? 32'hcafebeb0 : n_last_addr;
 	r_mem_req_gnt <= w_reset ? 1'b0 : n_mem_req_gnt;
      end
 
