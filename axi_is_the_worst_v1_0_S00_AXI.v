@@ -19,16 +19,6 @@ module axi_is_the_worst_v1_0_S00_AXI #
     output wire [31:0]			      mask,
     input wire [31:0]			      status,
     
-    input wire [31:0]			      w0,
-    input wire [31:0]			      w1,
-    input wire [31:0]			      w2,
-    input wire [31:0]			      w3,
-
-    input wire [31:0]			      st_0,
-    input wire [31:0]			      st_1,
-    input wire [31:0]			      st_2,
-    input wire [31:0]			      st_3,
-
     input wire [7:0]			      putchar_fifo_out,
     input wire				      putchar_fifo_empty,
     output wire				      putchar_fifo_pop, 
@@ -48,7 +38,6 @@ module axi_is_the_worst_v1_0_S00_AXI #
     input wire [31:0]			      pc2,
     input wire				      pc_valid,
     input wire				      pc2_valid,
-    input wire [31:0]			      mem_txn_cnt,
     input wire [63:0]			      l1i_cache_accesses,
     input wire [63:0]			      l1i_cache_hits,
     input wire [63:0]			      l1d_cache_accesses,
@@ -1137,12 +1126,12 @@ module axi_is_the_worst_v1_0_S00_AXI #
 	  6'h0B   : reg_data_out <= epc;//
 	  6'h0C   : reg_data_out <= slv_reg12;
 	  6'h0D   : reg_data_out <= states;
-	  6'h0E   : reg_data_out <= mem_txn_cnt;
+	  6'h0E   : reg_data_out <= slv_reg14;
 	  6'h0F   : reg_data_out <= rv_mem_addr;
-	  6'h10   : reg_data_out <= w0;
-	  6'h11   : reg_data_out <= w1;
-	  6'h12   : reg_data_out <= w2;
-	  6'h13   : reg_data_out <= w3;
+	  6'h10   : reg_data_out <= slv_reg16;
+	  6'h11   : reg_data_out <= slv_reg17;
+	  6'h12   : reg_data_out <= slv_reg18;
+	  6'h13   : reg_data_out <= slv_reg19;
 	  6'h14   : reg_data_out <= slv_reg20;
 	  6'h15   : reg_data_out <= slv_reg21;
 	  6'h16   : reg_data_out <= slv_reg22;
@@ -1155,10 +1144,10 @@ module axi_is_the_worst_v1_0_S00_AXI #
 	  6'h1D   : reg_data_out <= slv_reg29;
 	  6'h1E   : reg_data_out <= slv_reg30;
 	  6'h1F   : reg_data_out <= slv_reg31;
-	  6'h20   : reg_data_out <= st_0;
-	  6'h21   : reg_data_out <= st_1;
-	  6'h22   : reg_data_out <= st_2;
-	  6'h23   : reg_data_out <= st_3;
+	  6'h20   : reg_data_out <= slv_reg32;
+	  6'h21   : reg_data_out <= slv_reg33;
+	  6'h22   : reg_data_out <= slv_reg34;
+	  6'h23   : reg_data_out <= slv_reg35;
 	  6'h24   : reg_data_out <= slv_reg36;
 	  6'h25   : reg_data_out <= slv_reg37;
 	  6'h26   : reg_data_out <= slv_reg38;

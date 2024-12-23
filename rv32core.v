@@ -1310,58 +1310,88 @@ module decode_riscv (
 				case (insn[14:12])
 					3'd0:
 						case (insn[31:25])
-							7'h00: uop[251-:7] = (rd != 'd0 ? 7'd38 : 7'd73);
+							7'h00: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd38 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							7'h01: uop[251-:7] = (rd != 'd0 ? 7'd29 : 7'd73);
-							7'h20: uop[251-:7] = (rd != 'd0 ? 7'd39 : 7'd73);
+							7'h20: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd39 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							default:
 								;
 						endcase
 					3'd1:
 						case (insn[31:25])
-							7'd0: uop[251-:7] = (rd != 'd0 ? 7'd47 : 7'd73);
+							7'd0: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd47 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							7'h01: uop[251-:7] = (rd != 'd0 ? 7'd30 : 7'd73);
 							default:
 								;
 						endcase
 					3'd2:
 						case (insn[31:25])
-							7'd0: uop[251-:7] = (rd != 'd0 ? 7'd4 : 7'd73);
+							7'd0: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd4 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							default:
 								;
 						endcase
 					3'd3:
 						case (insn[31:25])
-							7'h00: uop[251-:7] = (rd != 'd0 ? 7'd5 : 7'd73);
+							7'h00: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd5 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							7'h01: uop[251-:7] = (rd != 'd0 ? 7'd31 : 7'd73);
 							default:
 								;
 						endcase
 					3'd4:
 						case (insn[31:25])
-							7'h00: uop[251-:7] = (rd != 'd0 ? 7'd76 : 7'd73);
+							7'h00: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd76 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							7'h01: uop[251-:7] = (rd != 'd0 ? 7'd32 : 7'd73);
 							default:
 								;
 						endcase
 					3'd5:
 						case (insn[31:25])
-							7'h00: uop[251-:7] = (rd != 'd0 ? 7'd0 : 7'd73);
+							7'h00: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd0 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							7'h01: uop[251-:7] = (rd != 'd0 ? 7'd33 : 7'd73);
 							7'h07: uop[251-:7] = (rd != 'd0 ? 7'd91 : 7'd73);
-							7'h20: uop[251-:7] = (rd != 'd0 ? 7'd1 : 7'd73);
+							7'h20: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd1 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							default:
 								;
 						endcase
 					3'd6:
 						case (insn[31:25])
-							7'h00: uop[251-:7] = (rd != 'd0 ? 7'd75 : 7'd73);
+							7'h00: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd75 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							7'h01: uop[251-:7] = (rd != 'd0 ? 7'd34 : 7'd73);
 							default:
 								;
 						endcase
 					3'd7:
 						case (insn[31:25])
-							7'h00: uop[251-:7] = (rd != 'd0 ? 7'd74 : 7'd73);
+							7'h00: begin
+								uop[251-:7] = (rd != 'd0 ? 7'd74 : 7'd73);
+								uop[0] = 1'b1;
+							end
 							7'h01: uop[251-:7] = (rd != 'd0 ? 7'd35 : 7'd73);
 							7'h07: uop[251-:7] = (rd != 'd0 ? 7'd92 : 7'd73);
 							default:
@@ -1388,22 +1418,32 @@ module decode_riscv (
 					uop[229] = 1'b1;
 					uop[236-:7] = rs2;
 					uop[20] = 1'b1;
-					if ((insn[14:12] == 'd0) && (insn[31:25] == 'd0))
+					if ((insn[14:12] == 'd0) && (insn[31:25] == 'd0)) begin
 						uop[251-:7] = (rd != 'd0 ? 7'd77 : 7'd73);
-					else if ((insn[14:12] == 'd0) && (insn[31:25] == 'd32))
+						uop[0] = 1'b1;
+					end
+					else if ((insn[14:12] == 'd0) && (insn[31:25] == 'd32)) begin
 						uop[251-:7] = (rd != 'd0 ? 7'd78 : 7'd73);
+						uop[0] = 1'b1;
+					end
 					else if ((insn[14:12] == 'd0) && (insn[31:25] == 'd1))
 						uop[251-:7] = (rd != 'd0 ? 7'd84 : 7'd73);
-					else if ((insn[14:12] == 'd1) && (insn[31:25] == 'd0))
+					else if ((insn[14:12] == 'd1) && (insn[31:25] == 'd0)) begin
 						uop[251-:7] = (rd != 'd0 ? 7'd89 : 7'd73);
+						uop[0] = 1'b1;
+					end
 					else if ((insn[14:12] == 'd4) && (insn[31:25] == 'd1))
 						uop[251-:7] = (rd != 'd0 ? 7'd85 : 7'd73);
-					else if ((insn[14:12] == 'd5) && (insn[31:25] == 'd0))
+					else if ((insn[14:12] == 'd5) && (insn[31:25] == 'd0)) begin
 						uop[251-:7] = (rd != 'd0 ? 7'd90 : 7'd73);
+						uop[0] = 1'b1;
+					end
 					else if ((insn[14:12] == 'd5) && (insn[31:25] == 'd1))
 						uop[251-:7] = (rd != 'd0 ? 7'd86 : 7'd73);
-					else if ((insn[14:12] == 'd5) && (insn[31:25] == 'd32))
+					else if ((insn[14:12] == 'd5) && (insn[31:25] == 'd32)) begin
 						uop[251-:7] = (rd != 'd0 ? 7'd83 : 7'd73);
+						uop[0] = 1'b1;
+					end
 					else if ((insn[14:12] == 'd6) && (insn[31:25] == 'd1))
 						uop[251-:7] = (rd != 'd0 ? 7'd87 : 7'd73);
 					else if ((insn[14:12] == 'd7) && (insn[31:25] == 'd1))
@@ -1418,6 +1458,7 @@ module decode_riscv (
 				uop[220-:64] = w_pc_imm;
 				uop[21] = insn_pred;
 				uop[19] = 1'b1;
+				uop[0] = 1'b1;
 				case (insn[14:12])
 					3'd0: uop[251-:7] = 7'd41;
 					3'd1: uop[251-:7] = 7'd46;
@@ -1529,6 +1570,7 @@ module decode_riscv (
 										uop[237] = 1'b1;
 										uop[236-:7] = 'd0;
 										uop[229] = 1'b1;
+										uop[0] = 1'b1;
 									end
 									else if (csr_id == 6'd26) begin
 										uop[251-:7] = (rd == 'd0 ? 7'd73 : 7'd14);
@@ -6962,7 +7004,7 @@ module exec (
 		t_uq2 = r_uq[r_uq_next_head_ptr[3:0]];
 	end
 	wire w_alu_sched_avail = (&r_alu_sched_valid == 1'b0) & (t_flash_clear == 1'b0);
-	wire w_alu_sched_avail2 = 1'b0;
+	wire w_alu_sched_avail2 = (&r_alu_sched_valid2 == 1'b0) & (t_flash_clear == 1'b0);
 	wire w_uop1_on_sched1 = w_alu_sched_avail & (t_uq_empty == 1'b0);
 	wire w_uop1_on_sched2 = (w_alu_sched_avail2 & (t_uq_empty == 1'b0)) & t_uq[0];
 	wire w_sched_two_uops = (((w_alu_sched_avail & w_alu_sched_avail2) & (t_uq_empty == 1'b0)) & (t_uq_next_empty == 1'b0)) & (t_uq[0] | t_uq2[0]);
@@ -7321,6 +7363,251 @@ module exec (
 		t_result2 = 'd0;
 		t_wr_int_prf2 = 1'b0;
 		t_zero_shift_upper2 = 1'b0;
+		case (int_uop2[251-:7])
+			7'd46: begin
+				t_take_br2 = t_srcA_2 != t_srcB_2;
+				t_mispred_br2 = int_uop2[21] != t_take_br2;
+				t_pc_2 = (t_take_br2 ? int_uop2[220-:64] : w_pc2_4);
+				t_alu_valid2 = 1'b1;
+			end
+			7'd41: begin
+				t_take_br2 = t_srcA_2 == t_srcB_2;
+				t_mispred_br2 = int_uop2[21] != t_take_br2;
+				t_pc_2 = (t_take_br2 ? int_uop2[220-:64] : w_pc2_4);
+				t_alu_valid2 = 1'b1;
+			end
+			7'd44: begin
+				t_take_br2 = $signed(t_srcA_2) < $signed(t_srcB_2);
+				t_mispred_br2 = int_uop2[21] != t_take_br2;
+				t_pc_2 = (t_take_br2 ? int_uop2[220-:64] : w_pc2_4);
+				t_alu_valid2 = 1'b1;
+			end
+			7'd42: begin
+				t_take_br2 = $signed(t_srcA_2) >= $signed(t_srcB_2);
+				t_mispred_br2 = int_uop2[21] != t_take_br2;
+				t_pc_2 = (t_take_br2 ? int_uop2[220-:64] : w_pc2_4);
+				t_alu_valid2 = 1'b1;
+			end
+			7'd45: begin
+				t_take_br2 = t_srcA_2 < t_srcB_2;
+				t_mispred_br2 = int_uop2[21] != t_take_br2;
+				t_pc_2 = (t_take_br2 ? int_uop2[220-:64] : w_pc2_4);
+				t_alu_valid2 = 1'b1;
+			end
+			7'd43: begin
+				t_take_br2 = t_srcA_2 >= t_srcB_2;
+				t_mispred_br2 = int_uop2[21] != t_take_br2;
+				t_pc_2 = (t_take_br2 ? int_uop2[220-:64] : w_pc2_4);
+				t_alu_valid2 = 1'b1;
+			end
+			7'd65: begin
+				t_take_br2 = 1'b1;
+				t_mispred_br2 = int_uop2[21] != 1'b1;
+				t_pc_2 = int_uop2[220-:64];
+				t_result2 = w_pc2_4;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd68: begin
+				t_take_br2 = 1'b1;
+				t_mispred_br2 = w_mispredicted_indirect2;
+				t_pc_2 = w_indirect_target2;
+				t_alu_valid2 = 1'b1;
+				t_result2 = w_pc2_4;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd66: begin
+				t_take_br2 = 1'b1;
+				t_mispred_br2 = w_mispredicted_indirect2;
+				t_pc_2 = w_indirect_target2;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd67: begin
+				t_take_br2 = 1'b1;
+				t_mispred_br2 = w_mispredicted_indirect2;
+				t_pc_2 = w_indirect_target2;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd70: begin
+				t_addi_2 = 1'b1;
+				t_result2 = w_as64_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd79: begin
+				t_addi_2 = 1'b1;
+				t_result2 = w_as64_2_sext;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd38: begin
+				t_result2 = w_as64_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd77: begin
+				t_result2 = w_as64_2_sext;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd4: begin
+				t_result2 = {w_zf, $signed(t_srcA_2) < $signed(t_srcB_2)};
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd5: begin
+				t_result2 = {w_zf, t_srcA_2 < t_srcB_2};
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd36: begin
+				t_result2 = {w_zf, $signed(t_srcA_2) < $signed(int_uop2[220-:64])};
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd37: begin
+				t_result2 = {w_zf, t_srcA_2 < int_uop2[220-:64]};
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd39: begin
+				t_sub2 = 1'b1;
+				t_result2 = w_as64_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd78: begin
+				t_sub2 = 1'b1;
+				t_result2 = w_as64_2_sext;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd40: begin
+				t_result2 = int_uop2[220-:64] & t_srcA_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd62: begin
+				t_result2 = int_uop2[220-:64] | t_srcA_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd63: begin
+				t_result2 = int_uop2[220-:64] ^ t_srcA_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd74: begin
+				t_result2 = t_srcA_2 & t_srcB_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd75: begin
+				t_result2 = t_srcA_2 | t_srcB_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd76: begin
+				t_result2 = t_srcA_2 ^ t_srcB_2;
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd0: begin
+				t_shift_amt2 = {(mode64 ? t_srcB_2[5] : 1'b0), t_srcB_2[4:0]};
+				t_result2 = w_shifter_out2;
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd50: begin
+				t_shift_amt2 = {(mode64 ? int_uop2[162] : 1'b0), int_uop2[161:157]};
+				t_result2 = w_shifter_out2;
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd1: begin
+				t_signed_shift2 = 1'b1;
+				t_shift_amt2 = {(mode64 ? t_srcB_2[5] : 1'b0), t_srcB_2[4:0]};
+				t_result2 = w_shifter_out2;
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd83: begin
+				t_signed_shift2 = 1'b1;
+				t_shift_amt2 = {1'b0, t_srcB_2[4:0]};
+				t_result2 = {{32 {w_shifter_out2[31]}}, w_shifter_out2[31:0]};
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd90: begin
+				t_zero_shift_upper2 = 1'b1;
+				t_shift_amt2 = {1'b0, t_srcB_2[4:0]};
+				t_result2 = {{32 {w_shifter_out2[31]}}, w_shifter_out2[31:0]};
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd82: begin
+				t_signed_shift2 = 1'b1;
+				t_shift_amt2 = {1'b0, int_uop2[161:157]};
+				t_result2 = {{32 {w_shifter_out2[31]}}, w_shifter_out2[31:0]};
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+				t_zero_shift_upper2 = 1'b1;
+			end
+			7'd81: begin
+				t_shift_amt2 = {1'b0, int_uop2[161:157]};
+				t_result2 = {{32 {w_shifter_out2[31]}}, w_shifter_out2[31:0]};
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+				t_zero_shift_upper2 = 1'b1;
+			end
+			7'd49: begin
+				t_signed_shift2 = 1'b1;
+				t_shift_amt2 = {(mode64 ? int_uop2[162] : 1'b0), int_uop2[161:157]};
+				t_result2 = w_shifter_out2;
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd47: begin
+				t_left_shift2 = 1'b1;
+				t_shift_amt2 = {(mode64 ? t_srcB_2[5] : 1'b0), t_srcB_2[4:0]};
+				t_result2 = w_shifter_out2;
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd89: begin
+				t_left_shift2 = 1'b1;
+				t_shift_amt2 = {1'b0, t_srcB_2[4:0]};
+				t_result2 = {{32 {w_shifter_out2[31]}}, w_shifter_out2[31:0]};
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd48: begin
+				t_left_shift2 = 1'b1;
+				t_shift_amt2 = {(mode64 ? int_uop2[162] : 1'b0), int_uop2[161:157]};
+				t_result2 = w_shifter_out2;
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd80: begin
+				t_left_shift2 = 1'b1;
+				t_shift_amt2 = int_uop2[162:157];
+				t_result2 = {{32 {w_shifter_out2[31]}}, w_shifter_out2[31:0]};
+				t_wr_int_prf2 = 1'b1;
+				t_alu_valid2 = 1'b1;
+			end
+			7'd71: begin
+				t_result2 = int_uop2[220-:64];
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			7'd72: begin
+				t_result2 = int_uop2[220-:64];
+				t_alu_valid2 = 1'b1;
+				t_wr_int_prf2 = 1'b1;
+			end
+			default:
+				;
+		endcase
 	end
 	always @(posedge clk)
 		if (reset || t_flash_clear)
@@ -11722,9 +12009,9 @@ module rf6r3w (
 	localparam H_DEPTH = 1 << (LG_DEPTH - 1);
 	reg [WIDTH - 1:0] r_ram_alu [H_DEPTH - 1:0];
 	reg [WIDTH - 1:0] r_ram_mem [H_DEPTH - 1:0];
-	wire wen2_ = 1'b0;
-	wire [LG_DEPTH - 1:0] rdptr4_ = 'd0;
-	wire [LG_DEPTH - 1:0] rdptr5_ = 'd0;
+	wire wen2_ = wen2;
+	wire [LG_DEPTH - 1:0] rdptr4_ = rdptr4;
+	wire [LG_DEPTH - 1:0] rdptr5_ = rdptr5;
 	wire rd0_mem = rdptr0[LG_DEPTH - 1];
 	wire rd1_mem = rdptr1[LG_DEPTH - 1];
 	wire rd2_mem = rdptr2[LG_DEPTH - 1];

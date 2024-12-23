@@ -35,7 +35,9 @@ module axi_is_the_worst_v1_0_M00_AXI #
     input wire				     step_txn,
     input wire				     ack_txn,
     input wire [31:0]			     baseaddr,
-    output wire [31:0]			     status,
+    output wire [63:0]			     txn_cnt,
+    output wire [63:0]			     txn_lat,
+    
     output wire [127:0]			     load_data,
     output wire [3:0]			     state,
     output wire [31:0]			     last_addr,
@@ -184,8 +186,10 @@ module axi_is_the_worst_v1_0_M00_AXI #
    reg [3:0]	      r_state, n_state;
    assign state = r_state;
    
-   reg [31:0]	      r_cnt, n_cnt;
-   assign status = r_cnt;
+   reg [63:0]	      r_cnt, n_cnt, r_lat, n_lat;
+   assign txn_cnt = r_cnt;
+   assign txn_lat = r_lat;
+   
 
    //I/O Connections. Write Address (AW)
    assign M_AXI_AWID	= 'b0;
@@ -289,17 +293,23 @@ module axi_is_the_worst_v1_0_M00_AXI #
    
    always@(posedge M_AXI_ACLK)
      begin
-        r_cnt <= w_reset ? 32'd0 : n_cnt;
+        r_cnt <= w_reset ? 'd0 : n_cnt;
+	r_lat <= w_reset ? 'd0 : n_lat;
      end // always@ (posedge M_AXI_ACLK)
    
    always@(*)
      begin
 	n_cnt = r_cnt;
+	n_lat = r_lat;
 	if(t_mem_req_gnt)
 	  begin
-	     n_cnt = r_cnt + 32'd1;
+	     n_cnt = r_cnt + 'd1;
 	  end
-     end
+	if(r_state != IDLE)
+	  begin
+	     n_lat = r_lat + 'd1;
+	  end
+     end // always@ (*)
 
    
    always@(*)

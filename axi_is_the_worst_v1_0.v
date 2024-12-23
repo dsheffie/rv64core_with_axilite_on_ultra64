@@ -113,8 +113,6 @@ module axi_is_the_worst_v1_0 #
 
    wire [127:0]					w_mem_req_store_data;
    
-   wire [31:0] 					w_w0, w_w1, w_w2, w_w3;
-   wire [31:0] 					w_r0, w_r1, w_r2, w_r3;   
    
    //outputs to axi slave
    wire [31:0] 					w_rvcontrol, w_resume_pc;
@@ -145,78 +143,18 @@ module axi_is_the_worst_v1_0 #
    wire [63:0] 					w_l1d_cache_hits;
    wire [63:0] 					w_l2_cache_accesses;
    wire [63:0] 					w_l2_cache_hits;
-   wire 					w_branch_fault;
 
-   reg [63:0] 					r_branch_faults;
+   wire [63:0]					w_txn_lat, w_txn_cnt;
    wire 					w_reset = (s00_axi_aresetn==1'b0);
-   
-   always@(posedge s00_axi_aclk)
-     begin
-	if(w_reset | w_rvcontrol[0])
-	  begin
-	     r_branch_faults <= 64'd0;
-	  end
-	else if(w_branch_fault)
-	  begin
-	     r_branch_faults <= r_branch_faults + 64'd1;
-	  end
-     end
    
    
    //connects to axi master
    wire 					w_mem_req_valid, w_mem_rsp_valid;
    wire						w_mem_req_gnt;
    wire [1:0]					w_mem_req_tag, w_mem_rsp_tag;
-   
-   wire [3:0] 					w_mem_req_opcode;
-   wire [31:0] 					w_mem_txn_cnt;
-
-   reg [63:0]					r_total_mem_txns, n_total_mem_txns;
-   reg [63:0]					r_total_mem_cycles, n_total_mem_cycles;
-   reg [31:0]					r_mem_cnt, n_mem_cnt;
-   reg						r_in_mem_txn, n_in_mem_txn;
-   
-   always@(posedge s00_axi_aclk)
-     begin
-	if(w_reset | w_rvcontrol[0])
-	  begin
-	     r_total_mem_txns <= 64'd0;
-	     r_total_mem_cycles <= 64'd0;
-	     r_in_mem_txn <= 1'b0;
-	     r_mem_cnt <= 32'd0;
-	  end
-	else
-	  begin
-	     r_total_mem_txns <= n_total_mem_txns;
-	     r_total_mem_cycles <= n_total_mem_cycles;
-	     r_in_mem_txn <= n_in_mem_txn;
-	     r_mem_cnt <= n_mem_cnt;
-	  end
-     end // always@ (posedge clk)
-
-   always@(*)
-     begin
-	n_total_mem_cycles = r_total_mem_cycles;
-	n_total_mem_txns = r_total_mem_txns;
-	n_in_mem_txn = r_in_mem_txn;
-	n_mem_cnt = r_mem_cnt + 'd1;
-	
-	if(w_mem_req_valid & (r_in_mem_txn == 1'b0))
-	  begin
-	     n_mem_cnt = 'd0;
-	     n_total_mem_txns = r_total_mem_txns + 'd1;	     
-	     n_in_mem_txn = 1'b1;
-	  end
-	else if(w_mem_rsp_valid & r_in_mem_txn)
-	  begin
-	     n_total_mem_cycles = r_total_mem_cycles + r_mem_cnt;
-	     n_in_mem_txn = 1'b0;	     
-	  end
-     end // always@ (*)
-
+   wire [3:0]					w_mem_req_opcode;
    wire [127:0]					w_load_data;
-      
-   reg [31:0] 					r_cycle;
+   
    wire [3:0] w_dstate;
    wire [3:0] w_istate;
    wire [4:0] w_cstate, w_l2state;
@@ -270,14 +208,6 @@ module axi_is_the_worst_v1_0 #
 				       .base(w_baseaddr),
 				       .mask(w_addrmask),
 				       .status(w_status),
-				       .w0(w_w0),
-				       .w1(w_w1),
-				       .w2(w_w2),
-				       .w3(w_w3),
-				       .st_0(w_r0),
-				       .st_1(w_r1),
-				       .st_2(w_r2),
-				       .st_3(w_r3),
 				       .last_addr(w_last_addr),
 				       .last_data(w_last_data),				       
 				       .putchar_fifo_out(w_putchar_fifo_out),
@@ -295,17 +225,16 @@ module axi_is_the_worst_v1_0 #
 				       .pc2(w_pc2),
 				       .pc_valid(w_pc_valid),
 				       .pc2_valid(w_pc2_valid),
-				       .mem_txn_cnt(w_mem_txn_cnt),
 				       .l1i_cache_accesses(w_l1i_cache_accesses),
 				       .l1i_cache_hits(w_l1i_cache_hits),
 				       .l1d_cache_accesses(w_l1d_cache_accesses),
 				       .l1d_cache_hits(w_l1d_cache_hits),
 				       .l2_cache_accesses(w_l2_cache_accesses),
 				       .l2_cache_hits(w_l2_cache_hits),
-				       .branch_faults(r_branch_faults),
+				       .branch_faults('d0),
 
-				       .dram_req_cnt(r_total_mem_txns),
-				       .dram_req_cycles(r_total_mem_cycles),
+				       .dram_req_cnt(w_txn_cnt),
+				       .dram_req_cycles(w_txn_lat),
 				       .rv_reset(w_rvcontrol[0]),
 
 				       .S_AXI_ACLK(s00_axi_aclk),
@@ -351,7 +280,8 @@ module axi_is_the_worst_v1_0 #
 				       .step_txn(w_rvcontrol[16]),
 				       .ack_txn(w_rvcontrol[31]),
 				       .baseaddr(w_axi_addr),
-				       .status(w_status),
+				       .txn_lat(w_txn_lat),
+				       .txn_cnt(t_txn_cnt),
 				       .load_data(w_load_data),
 				       .state(w_axistate),
 				       .last_addr(w_last_addr),
@@ -507,7 +437,7 @@ module axi_is_the_worst_v1_0 #
 	   .retire_two_pc(w_pc2),
 	   .branch_pc(),
 	   .branch_pc_valid(),
-	   .branch_fault(w_branch_fault),
+	   .branch_fault(),
 	   .l1i_cache_accesses(w_l1i_cache_accesses),
 	   .l1i_cache_hits(w_l1i_cache_hits),
 	   .l1d_cache_accesses(w_l1d_cache_accesses),
