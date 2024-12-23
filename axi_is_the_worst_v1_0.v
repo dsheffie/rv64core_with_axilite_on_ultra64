@@ -110,6 +110,8 @@ module axi_is_the_worst_v1_0 #
    
    wire [31:0] 					w_mem_req_addr;
    wire [31:0] 					w_axi_addr = w_baseaddr+(w_mem_req_addr & w_addrmask);
+
+   wire [127:0]					w_mem_req_store_data;
    
    wire [31:0] 					w_w0, w_w1, w_w2, w_w3;
    wire [31:0] 					w_r0, w_r1, w_r2, w_r3;   
@@ -164,6 +166,7 @@ module axi_is_the_worst_v1_0 #
    //connects to axi master
    wire 					w_mem_req_valid, w_mem_rsp_valid;
    wire						w_mem_req_gnt;
+   wire [1:0]					w_mem_req_tag, w_mem_rsp_tag;
    
    wire [3:0] 					w_mem_req_opcode;
    wire [31:0] 					w_mem_txn_cnt;
@@ -353,15 +356,13 @@ module axi_is_the_worst_v1_0 #
 				       .state(w_axistate),
 				       .last_addr(w_last_addr),
 				       .last_data(w_last_data),
-				       
-				       .r0(w_r0),
-				       .r1(w_r1),
-				       .r2(w_r2),
-				       .r3(w_r3),
+				       .mem_req_store_data(w_mem_req_store_data),
 				       
 				       .mem_req_valid(w_mem_req_valid),
+				       .mem_req_tag(w_mem_req_tag),
 				       .mem_opcode(w_mem_req_opcode), 
 				       .mem_rsp_valid(w_mem_rsp_valid),
+				       .mem_rsp_tag(w_mem_rsp_tag),				       
 				       .mem_req_gnt(w_mem_req_gnt),
 				       .INIT_AXI_TXN(m00_axi_init_axi_txn),
 				       .TXN_DONE(m00_axi_txn_done),
@@ -480,10 +481,12 @@ module axi_is_the_worst_v1_0 #
 	   .ready_for_resume(w_ready),
 	   
 	   .mem_req_valid(w_mem_req_valid),
+	   .mem_req_tag(w_mem_req_tag),
 	   .mem_req_addr(w_mem_req_addr),
-	   .mem_req_store_data({w_r3,w_r2,w_r1,w_r0}),
+	   .mem_req_store_data(w_mem_req_store_data),
 	   .mem_req_opcode(w_mem_req_opcode),
 	   .mem_req_gnt(w_mem_req_gnt),
+	   .mem_rsp_tag(w_mem_rsp_tag),
 	   .mem_rsp_valid(w_mem_rsp_valid),
 	   .mem_rsp_load_data(w_load_data),		     
 	   

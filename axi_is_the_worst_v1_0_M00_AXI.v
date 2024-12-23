@@ -40,16 +40,16 @@ module axi_is_the_worst_v1_0_M00_AXI #
     output wire [3:0]			     state,
     output wire [31:0]			     last_addr,
     output wire [31:0]			     last_data,
-    
-    input wire [31:0]			     r0,
-    input wire [31:0]			     r1,
-    input wire [31:0]			     r2,
-    input wire [31:0]			     r3,
+
+    input wire [127:0]			     mem_req_store_data,
     
     input wire				     mem_req_valid,
     input wire [3:0]			     mem_opcode,
     output wire				     mem_rsp_valid,
-    output wire				     mem_req_gnt, 
+    output wire				     mem_req_gnt,
+
+    input wire [1:0]			     mem_req_tag,
+    output wire [1:0]			     mem_rsp_tag,
     // User ports ends
     // Do not modify the ports beyond this line
 
@@ -173,10 +173,13 @@ module axi_is_the_worst_v1_0_M00_AXI #
     output wire				     M_AXI_RREADY
     );
 
-   
+   reg [127:0]				     r_load_data;
+   reg [127:0]				     n_store_data, r_store_data;   
    reg					     r_mem_rsp_valid, n_mem_rsp_valid;
+   reg [1:0]				     r_tag,n_tag;
    
    assign mem_rsp_valid = r_mem_rsp_valid;
+   assign mem_rsp_tag = r_tag;
    
    reg [3:0]	      r_state, n_state;
    assign state = r_state;
@@ -228,24 +231,24 @@ module axi_is_the_worst_v1_0_M00_AXI #
    assign TXN_DONE	= 1'b1;
 
 
-   reg [31:0]			   r_addr, n_addr;
-   reg [31:0]			   r_last_addr, n_last_addr;   
-   reg				   r_awvalid, n_awvalid;
-   reg				   r_arvalid, n_arvalid;
-   reg				   n_mem_req_gnt, r_mem_req_gnt;
-   reg				   r_wvalid, n_wvalid;
-   reg				   r_bready, n_bready;
-   reg				   n_rready, r_rready;
+   reg [31:0]	      r_addr, n_addr;
+   reg [31:0]	      r_last_addr, n_last_addr;   
+   reg		      r_awvalid, n_awvalid;
+   reg		      r_arvalid, n_arvalid;
+   reg		      t_mem_req_gnt;
+   reg		      r_wvalid, n_wvalid;
+   reg		      r_bready, n_bready;
+   reg		      n_rready, r_rready;
 
-   localparam			   IDLE = 4'd0;
-   localparam			   WR_CH = 4'd1;
-   localparam			   WR_RSP = 4'd2;
-   localparam			   RD_CH = 4'd3;
-   localparam			   RD_RSP = 4'd4;
-   localparam			   RD_DEAD = 4'd5;
-   localparam			   WR_DEAD = 4'd6;
-   localparam			   WAIT_ACK = 4'd7;
-   localparam			   WAIT_REQ = 4'd8;
+   localparam	      IDLE = 4'd0;
+   localparam	      WR_CH = 4'd1;
+   localparam	      WR_RSP = 4'd2;
+   localparam	      RD_CH = 4'd3;
+   localparam	      RD_RSP = 4'd4;
+   localparam	      RD_DEAD = 4'd5;
+   localparam	      WR_DEAD = 4'd6;
+   localparam	      WAIT_ACK = 4'd7;
+   localparam	      WAIT_REQ = 4'd8;
    
    wire				   w_reset = (M_AXI_ARESETN == 1'b0) | rv_reset;
    always@(posedge M_AXI_ACLK)
@@ -258,8 +261,8 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	r_bready <= w_reset ? 1'b0 : n_bready;
 	r_mem_rsp_valid <= w_reset ? 1'b0 : n_mem_rsp_valid;
 	r_addr <= w_reset ? 32'hdeadbee0 : n_addr;
+	r_tag <= w_reset ? 'd0 : n_tag;
 	r_last_addr <= w_reset ? 32'hcafebeb0 : n_last_addr;
-	r_mem_req_gnt <= w_reset ? 1'b0 : n_mem_req_gnt;
      end
 
    assign M_AXI_ARADDR	= r_addr;
@@ -272,13 +275,13 @@ module axi_is_the_worst_v1_0_M00_AXI #
    
    assign M_AXI_WVALID	= r_awvalid;
    
-   assign M_AXI_WDATA	= {r3,r2,r1,r0};
+   assign M_AXI_WDATA	= r_store_data;
    assign M_AXI_WSTRB	= 16'hffff;
 
    assign M_AXI_WLAST	= r_awvalid;   
    assign M_AXI_BREADY	= (r_state == WR_CH) | (r_state == WR_RSP);
    
-   assign mem_req_gnt = r_mem_req_gnt;
+   assign mem_req_gnt = t_mem_req_gnt;
    
    wire w_wr_req = mem_req_valid & (mem_opcode == 4'd7);
    wire	w_rd_req = mem_req_valid & (mem_opcode == 4'd4);
@@ -292,7 +295,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
    always@(*)
      begin
 	n_cnt = r_cnt;
-	if(r_state == WAIT_REQ)
+	if(t_mem_req_gnt)
 	  begin
 	     n_cnt = r_cnt + 32'd1;
 	  end
@@ -302,7 +305,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
    always@(*)
      begin
 	n_state = r_state;
-	
+	n_tag = r_tag;
 	n_addr = r_addr;
 	n_last_addr = r_last_addr;
 	n_awvalid = r_awvalid;
@@ -312,7 +315,10 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	n_rready = r_rready;
 	n_bready = r_bready;
 	n_mem_rsp_valid = 1'b0;
-	n_mem_req_gnt = 1'b0;
+	n_store_data = r_store_data;
+	
+	//combinational
+	t_mem_req_gnt = 1'b0;
 	
 	case(r_state)
 	  IDLE:
@@ -322,7 +328,9 @@ module axi_is_the_worst_v1_0_M00_AXI #
 		    n_addr = baseaddr;		    	       		    
 		    n_state = WR_CH;
 		    n_awvalid = 1'b1;
-		    //n_mem_req_gnt = 1'b1;
+		    n_tag = mem_req_tag;
+		    t_mem_req_gnt = 1'b1;
+		    n_store_data = mem_req_store_data;
 		 end
 	       else if(w_rd_req)
 		 begin
@@ -330,9 +338,10 @@ module axi_is_the_worst_v1_0_M00_AXI #
 		    n_state = RD_CH;
 		    n_arvalid = 1'b1;
 		    n_rready = 1'b1;
-		    //n_mem_req_gnt = 1'b1;		    
+		    n_tag = mem_req_tag;		    
+		    t_mem_req_gnt = 1'b1;		    
 		 end
-	    end // case: 'd0
+	    end // case: IDLE
 	  WR_CH:
 	    begin
 	       if(M_AXI_AWVALID & M_AXI_AWREADY & M_AXI_WVALID & M_AXI_WREADY)
@@ -349,10 +358,6 @@ module axi_is_the_worst_v1_0_M00_AXI #
 		    if(step_txn)
 		      begin
 			 n_state = WR_DEAD;
-		      end
-		    else if(mem_req_valid)
-		      begin
-			 n_state = WAIT_REQ;
 		      end
 		    else
 		      begin
@@ -378,15 +383,10 @@ module axi_is_the_worst_v1_0_M00_AXI #
 		      begin
 			 n_state = RD_DEAD;
 		      end
-		    else if(mem_req_valid)
-		      begin
-			 n_state = WAIT_REQ;
-		      end
 		    else
 		      begin
 			 n_state = IDLE;
 		      end
-		    //n_state = RD_DEAD;
 		    n_mem_rsp_valid = 1'b1;
 		    n_rready = 1'b0;		    
 		 end
@@ -403,25 +403,16 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	    begin
 	       n_state = ack_txn ? WAIT_ACK : IDLE;
 	    end
-	  WAIT_REQ:
-	    begin
-	       if(mem_req_valid == 1'b0)
-		 begin
-		    n_state = IDLE;
-		 end
-	    end
 	endcase
      end // always@ (*)
-   
-   
-   
 
 
-   reg [127:0] r_load_data;
+
    assign load_data = r_load_data;
    
    always@(posedge M_AXI_ACLK)
      begin
+	r_store_data <= n_store_data;
 	if((r_state == RD_RSP) & M_AXI_RVALID)
 	  begin
 	     r_load_data <= M_AXI_RDATA;
