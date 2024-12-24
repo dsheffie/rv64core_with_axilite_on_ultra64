@@ -281,7 +281,7 @@ module axi_is_the_worst_v1_0 #
 				       .ack_txn(w_rvcontrol[31]),
 				       .baseaddr(w_axi_addr),
 				       .txn_lat(w_txn_lat),
-				       .txn_cnt(t_txn_cnt),
+				       .txn_cnt(w_txn_cnt),
 				       .load_data(w_load_data),
 				       .state(w_axistate),
 				       .last_addr(w_last_addr),

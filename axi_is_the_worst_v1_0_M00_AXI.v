@@ -243,7 +243,8 @@ module axi_is_the_worst_v1_0_M00_AXI #
    reg		      r_wvalid, n_wvalid;
    reg		      r_bready, n_bready;
    reg		      n_rready, r_rready;
-
+   reg		      r_ack_wr_early , n_ack_wr_early;
+   
    localparam	      IDLE = 4'd0;
    localparam	      WR_CH = 4'd1;
    localparam	      WR_RSP = 4'd2;
@@ -267,6 +268,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	r_addr <= w_reset ? 32'hdeadbee0 : n_addr;
 	r_tag <= w_reset ? 'd0 : n_tag;
 	r_last_addr <= w_reset ? 32'hcafebeb0 : n_last_addr;
+	r_ack_wr_early <= w_reset ? 1'b0 : n_ack_wr_early;
      end
 
    assign M_AXI_ARADDR	= r_addr;
@@ -326,7 +328,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	n_bready = r_bready;
 	n_mem_rsp_valid = 1'b0;
 	n_store_data = r_store_data;
-	
+	n_ack_wr_early = 1'b0;
 	//combinational
 	t_mem_req_gnt = 1'b0;
 	
@@ -340,7 +342,8 @@ module axi_is_the_worst_v1_0_M00_AXI #
 		    n_awvalid = 1'b1;
 		    n_tag = mem_req_tag;
 		    t_mem_req_gnt = 1'b1;
-		    n_store_data = mem_req_store_data;
+		    n_store_data = mem_req_store_data;	
+		    n_ack_wr_early = 1'b1;
 		 end
 	       else if(w_rd_req)
 		 begin
@@ -354,6 +357,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	    end // case: IDLE
 	  WR_CH:
 	    begin
+	       n_mem_rsp_valid = r_ack_wr_early;
 	       if(M_AXI_AWVALID & M_AXI_AWREADY & M_AXI_WVALID & M_AXI_WREADY)
 		 begin
 		    n_last_addr = r_addr;
@@ -373,7 +377,6 @@ module axi_is_the_worst_v1_0_M00_AXI #
 		      begin
 			 n_state = IDLE;
 		      end
-		    n_mem_rsp_valid = 1'b1;
 		 end
 	    end
 	  RD_CH:
