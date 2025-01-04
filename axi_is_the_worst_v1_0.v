@@ -131,10 +131,7 @@ module axi_is_the_worst_v1_0 #
 						w_got_break,
 						w_got_ud,
 						w_got_bad_addr,
-						w_got_monitor,
-						w_l1i_flushed,
-						w_l1d_flushed,
-						w_l2_flushed;
+						w_got_monitor;
    wire [4:0] 					w_state;
 
    wire [63:0] 					w_l1i_cache_accesses;
@@ -185,9 +182,7 @@ module axi_is_the_worst_v1_0 #
 			w_mem_req_opcode, //4 bits
 			w_mem_req_valid,
 			w_reset_out,
-			w_l2_flushed,//13
-			w_l1i_flushed,//12
-			w_l1d_flushed, //11
+			3'd0,
 			w_state,//6
 			w_got_monitor, //5
 			w_got_bad_addr, //4
@@ -200,6 +195,7 @@ module axi_is_the_worst_v1_0 #
    wire [31:0]					w_last_addr, w_last_data;
    
    // Instantiation of Axi Bus Interface S00_AXI
+   
    axi_is_the_worst_v1_0_S00_AXI # ( 
 				     .C_S_AXI_DATA_WIDTH(C_S00_AXI_DATA_WIDTH), 
 				     .C_S_AXI_ADDR_WIDTH(C_S00_AXI_ADDR_WIDTH)) 
@@ -207,6 +203,7 @@ module axi_is_the_worst_v1_0 #
 				       .controlreg(w_controlreg),
 				       .base(w_baseaddr),
 				       .mask(w_addrmask),
+				       .cpuaddr(w_mem_req_addr),
 				       .status(w_status),
 				       .last_addr(w_last_addr),
 				       .last_data(w_last_data),				       
@@ -280,6 +277,8 @@ module axi_is_the_worst_v1_0 #
 				       .step_txn(w_rvcontrol[16]),
 				       .ack_txn(w_rvcontrol[31]),
 				       .baseaddr(w_axi_addr),
+				       .addrmask(w_addrmask),
+				       .cpuaddr(w_mem_req_addr),
 				       .txn_lat(w_txn_lat),
 				       .txn_cnt(w_txn_cnt),
 				       .load_data(w_load_data),
@@ -347,9 +346,6 @@ module axi_is_the_worst_v1_0 #
 
 
 
-   assign w_l1i_flushed = 1'b0;
-   assign w_l1d_flushed = 1'b0;
-   assign w_l2_flushed = 1'b0;
 
    wire [1:0]					w_priv;
    wire						w_took_exc;

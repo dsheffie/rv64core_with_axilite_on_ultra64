@@ -35,6 +35,8 @@ module axi_is_the_worst_v1_0_M00_AXI #
     input wire				     step_txn,
     input wire				     ack_txn,
     input wire [31:0]			     baseaddr,
+    input wire [31:0]			     addrmask,
+    input wire [31:0]			     cpuaddr,
     output wire [63:0]			     txn_cnt,
     output wire [63:0]			     txn_lat,
     
@@ -254,6 +256,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
    localparam	      WR_DEAD = 4'd6;
    localparam	      WAIT_ACK = 4'd7;
    localparam	      WAIT_REQ = 4'd8;
+   localparam	      WR_BAD = 4'd9;
    
    wire				   w_reset = (M_AXI_ARESETN == 1'b0) | rv_reset;
    always@(posedge M_AXI_ACLK)
@@ -288,11 +291,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
    assign M_AXI_BREADY	= (r_state == WR_CH) | (r_state == WR_RSP);
    
    assign mem_req_gnt = t_mem_req_gnt;
-   
-   wire w_wr_req = mem_req_valid & (mem_opcode == 4'd7);
-   wire	w_rd_req = mem_req_valid & (mem_opcode == 4'd4);
-
-   
+      
    always@(posedge M_AXI_ACLK)
      begin
         r_cnt <= w_reset ? 'd0 : n_cnt;
@@ -313,6 +312,11 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	  end
      end // always@ (*)
 
+   wire [31:0] 					w_axi_addr = baseaddr+(cpuaddr & addrmask);
+   wire						w_bad_addr = cpuaddr > addrmask;
+
+   wire						w_wr_req = mem_req_valid & (mem_opcode == 4'd7);
+   wire						w_rd_req = mem_req_valid & (mem_opcode == 4'd4);
    
    always@(*)
      begin
@@ -335,9 +339,14 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	case(r_state)
 	  IDLE:
 	    begin
-	       if(w_wr_req)
+	       if(w_wr_req & w_bad_addr)
 		 begin
-		    n_addr = baseaddr;		    	       		    
+		    n_ack_wr_early = 1'b1;
+		    n_state = WR_BAD;
+		 end
+	       else if(w_wr_req)
+		 begin
+		    n_addr = w_axi_addr;
 		    n_state = WR_CH;
 		    n_awvalid = 1'b1;
 		    n_tag = mem_req_tag;
@@ -347,7 +356,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
 		 end
 	       else if(w_rd_req)
 		 begin
-		    n_addr = baseaddr;		    	       		    
+		    n_addr = w_axi_addr;		    	       		    
 		    n_state = RD_CH;
 		    n_arvalid = 1'b1;
 		    n_rready = 1'b1;
@@ -369,14 +378,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	    begin
 	       if(M_AXI_BVALID)
 		 begin
-		    if(step_txn)
-		      begin
-			 n_state = WR_DEAD;
-		      end
-		    else
-		      begin
-			 n_state = IDLE;
-		      end
+		    n_state = step_txn ? WR_DEAD : IDLE;
 		 end
 	    end
 	  RD_CH:
@@ -392,14 +394,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	    begin
 	       if(M_AXI_RVALID)
 		 begin
-		    if(step_txn)
-		      begin
-			 n_state = RD_DEAD;
-		      end
-		    else
-		      begin
-			 n_state = IDLE;
-		      end
+		    n_state = step_txn ? RD_DEAD : IDLE;
 		    n_mem_rsp_valid = 1'b1;
 		    n_rready = 1'b0;		    
 		 end
@@ -416,6 +411,11 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	    begin
 	       n_state = ack_txn ? WAIT_ACK : IDLE;
 	    end
+	  WR_BAD:
+	    begin
+	       n_mem_rsp_valid = r_ack_wr_early;
+	       n_state = IDLE;
+	    end	  
 	endcase
      end // always@ (*)
 

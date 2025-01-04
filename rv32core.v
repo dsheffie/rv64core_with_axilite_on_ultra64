@@ -69,7 +69,8 @@ module core_l1d_l1i_64 (
 	inflight,
 	epc,
 	restart_ack,
-	priv
+	priv,
+	pending_irq
 );
 	reg _sv2v_0;
 	localparam L1D_CL_LEN = 16;
@@ -145,6 +146,7 @@ module core_l1d_l1i_64 (
 	output wire [63:0] epc;
 	output wire restart_ack;
 	output wire [1:0] priv;
+	output wire pending_irq;
 	wire [63:0] restart_pc;
 	wire [63:0] restart_src_pc;
 	wire restart_src_is_indirect;
@@ -672,7 +674,8 @@ module core_l1d_l1i_64 (
 		.core_mark_dirty_valid(w_core_mark_dirty_valid),
 		.core_mark_dirty_addr(w_core_mark_dirty_addr),
 		.core_mark_dirty_rsp_valid(w_core_mark_dirty_rsp_valid),
-		.counters(t_counters)
+		.counters(t_counters),
+		.pending_irq(pending_irq)
 	);
 	initial _sv2v_0 = 0;
 endmodule
@@ -894,7 +897,8 @@ module core_l1d_l1i (
 		.inflight(inflight),
 		.epc(w_epc64),
 		.restart_ack(restart_ack),
-		.priv(priv)
+		.priv(priv),
+		.pending_irq()
 	);
 endmodule
 
@@ -1280,7 +1284,7 @@ module decode_riscv (
 							uop[229] = 1'b1;
 						end
 						5'd4: begin
-							uop[251-:7] = (insn[14:12] == 3'd2 ? 7'd9 : 7'd10);
+							uop[251-:7] = (insn[14:12] == 3'd2 ? 7'd11 : 7'd12);
 							uop[229] = 1'b1;
 						end
 						5'd8: begin
@@ -1295,8 +1299,7 @@ module decode_riscv (
 							uop[251-:7] = (insn[14:12] == 3'd2 ? 7'd11 : 7'd12);
 							uop[229] = 1'b1;
 						end
-						default:
-							;
+						default: uop[251-:7] = 7'd96;
 					endcase
 				end
 			7'h33: begin
@@ -3563,7 +3566,7 @@ module nu_l1d (
 	tlb_hits
 );
 	reg _sv2v_0;
-	localparam L1D_NUM_SETS = 256;
+	localparam L1D_NUM_SETS = 1024;
 	localparam L1D_CL_LEN = 16;
 	localparam L1D_CL_LEN_BITS = 128;
 	input wire clk;
@@ -3624,7 +3627,9 @@ module nu_l1d (
 	localparam BYTES_PER_CL = 16;
 	localparam N_TAG_BITS = 20;
 	localparam IDX_START = 4;
-	localparam IDX_STOP = 12;
+	localparam IDX_STOP = 14;
+	localparam LG_ALIAS_BITS = 2;
+	localparam LG_MAX_SET = 8;
 	localparam WORD_START = 2;
 	localparam WORD_STOP = 4;
 	localparam DWORD_START = 3;
@@ -3647,9 +3652,9 @@ module nu_l1d (
 	reg r_l2_probe_ack;
 	assign l2_probe_ack = r_l2_probe_ack;
 	reg [3:0] r_n_inflight;
-	reg [7:0] t_cache_idx;
-	reg [7:0] r_cache_idx;
-	reg [7:0] rr_cache_idx;
+	reg [9:0] t_cache_idx;
+	reg [9:0] r_cache_idx;
+	reg [9:0] rr_cache_idx;
 	reg [19:0] t_cache_tag;
 	reg [19:0] r_cache_tag;
 	wire [19:0] r_tag_out;
@@ -3659,20 +3664,20 @@ module nu_l1d (
 	wire [127:0] r_array_out;
 	reg [127:0] t_data;
 	reg [127:0] t_data2;
-	reg [7:0] t_cache_idx2;
-	reg [7:0] r_cache_idx2;
-	reg [7:0] rr_cache_idx2;
+	reg [9:0] t_cache_idx2;
+	reg [9:0] r_cache_idx2;
+	reg [9:0] rr_cache_idx2;
 	reg [19:0] t_cache_tag2;
 	reg [19:0] r_cache_tag2;
 	wire [19:0] r_tag_out2;
 	wire r_valid_out2;
 	wire r_dirty_out2;
 	wire [127:0] r_array_out2;
-	reg [7:0] t_miss_idx;
-	reg [7:0] r_miss_idx;
+	reg [9:0] t_miss_idx;
+	reg [9:0] r_miss_idx;
 	reg [63:0] t_miss_addr;
 	reg [63:0] r_miss_addr;
-	reg [7:0] t_array_wr_addr;
+	reg [9:0] t_array_wr_addr;
 	reg [127:0] t_array_wr_data;
 	reg [127:0] r_array_wr_data;
 	reg t_array_wr_en;
@@ -3686,8 +3691,10 @@ module nu_l1d (
 	reg [127:0] t_shift_2;
 	reg [127:0] t_store_shift;
 	reg [127:0] t_store_mask;
+	wire w_port2_hit_cache;
+	wire w_port2_vapa_mismatch;
+	wire w_port2_missed_no_alias;
 	reg t_got_rd_retry;
-	reg t_port2_hit_cache;
 	reg t_mark_invalid;
 	reg t_wr_array;
 	reg t_wr_store;
@@ -3799,7 +3806,7 @@ module nu_l1d (
 		for (_gv_i_1 = 0; _gv_i_1 < N_EB_ENTRIES; _gv_i_1 = _gv_i_1 + 1) begin : genblk1
 			localparam i = _gv_i_1;
 			assign w_eb_port1_hits[i] = (r_eb_valid[i] ? r_sb[(i * 160) + 159-:28] == t_mem_head[198:171] : 1'b0);
-			assign w_eb_port2_hits[i] = (r_eb_valid[i] ? r_sb[(i * 160) + 139-:8] == t_cache_idx2 : 1'b0);
+			assign w_eb_port2_hits[i] = (r_eb_valid[i] ? r_sb[(i * 160) + 141-:10] == t_cache_idx2 : 1'b0);
 		end
 	endgenerate
 	wire w_eb_port1_hit = |w_eb_port1_hits;
@@ -3853,9 +3860,9 @@ module nu_l1d (
 	end
 	reg [7:0] r_mq_addr_valid;
 	reg [7:0] r_mq_inflight;
-	reg [7:0] r_last_early;
+	reg [27:0] r_last_early;
 	reg r_last_early_valid;
-	reg [7:0] r_mq_addr [7:0];
+	reg [9:0] r_mq_addr [7:0];
 	reg [31:0] r_mq_dbg_addr [7:0];
 	reg [15:0] r_mq_mask [7:0];
 	reg [63:0] r_mq_full_addr [7:0];
@@ -4009,10 +4016,13 @@ module nu_l1d (
 	wire w_cache_port1_hit = r_valid_out & (r_tag_out == r_cache_tag);
 	wire w_cache_port1_clean_miss = !r_valid_out;
 	wire w_req_port_free = (r_got_req ? w_cache_port1_hit : 1'b1);
-	wire w_port2_dirty_miss = (r_valid_out2 && r_dirty_out2) && (r_tag_out2 != w_tlb_pa[31:IDX_STOP]);
-	wire w_port2_hit_cache = r_valid_out2 && (r_tag_out2 == w_tlb_pa[31:IDX_STOP]);
+	wire w_port2_dirty_miss = (r_valid_out2 & r_dirty_out2) && (r_tag_out2 != w_tlb_pa[31:12]);
+	assign w_port2_hit_cache = r_valid_out2 & (r_tag_out2 == w_tlb_pa[31:12]);
+	assign w_port2_vapa_mismatch = r_req2[180:179] != w_tlb_pa[13:12];
+	wire w_port2_almost_match = w_port2_vapa_mismatch & (r_tag_out2[19:LG_ALIAS_BITS] == w_tlb_pa[31:IDX_STOP]);
+	assign w_port2_missed_no_alias = (w_port2_hit_cache ? 1'b0 : !w_port2_vapa_mismatch);
 	reg r_pop_busy_addr2;
-	wire w_hit_pop = (r_pop_busy_addr2 ? r_cache_idx == r_req2[178:171] : 1'b0);
+	wire w_hit_pop = (r_pop_busy_addr2 ? r_cache_idx[7:0] == r_req2[178:171] : 1'b0);
 	reg [2:0] r_mrq_credits;
 	reg [2:0] n_mrq_credits;
 	always @(posedge clk) r_mrq_credits <= (reset ? {3 {1'b1}} : n_mrq_credits);
@@ -4020,15 +4030,16 @@ module nu_l1d (
 	wire w_two_free_credits = r_mrq_credits > 'd1;
 	wire w_three_free_credits = r_mrq_credits > 'd2;
 	wire w_queues_drained = &r_mrq_credits & w_eb_empty;
+	wire [31:0] w_req2_pa = {w_tlb_pa[31:12], r_req2[178:167]};
 	reg r_fwd_busy_addr2;
 	reg r_hit_busy_line2;
-	wire w_could_early_req_any = ((((((((t_push_miss & w_three_free_credits) & !t_port2_hit_cache) & (r_last_early_valid ? r_last_early != r_req2[178:171] : 1'b1)) & !((r_hit_busy_line2 | r_fwd_busy_addr2) | w_hit_pop)) & (r_req2[165] | r_req[166])) & w_tlb_hit) & (rr_last_wr ? rr_cache_idx != r_req2[178:171] : 1'b1)) & (r_last_wr ? r_cache_idx != r_req2[178:171] : 1'b1)) & (n_last_wr ? t_cache_idx != r_req2[178:171] : 1'b1);
-	wire w_could_early_req = !w_port2_dirty_miss & w_could_early_req_any;
+	wire w_could_early_req_any = ((((((((t_push_miss & w_three_free_credits) & w_port2_missed_no_alias) & (r_last_early_valid ? r_last_early != w_req2_pa[31:4] : 1'b1)) & !((r_hit_busy_line2 | r_fwd_busy_addr2) | w_hit_pop)) & (r_req2[165] | r_req[166])) & w_tlb_hit) & (rr_last_wr ? rr_cache_idx[7:0] != r_req2[178:171] : 1'b1)) & (r_last_wr ? r_cache_idx[7:0] != r_req2[178:171] : 1'b1)) & (n_last_wr ? t_cache_idx[7:0] != r_req2[178:171] : 1'b1);
+	wire w_could_early_req = (!w_port2_dirty_miss & w_could_early_req_any) & 1'b1;
 	wire w_gen_early_req = w_could_early_req & (r_got_req ? w_cache_port1_hit : 1'b1);
 	wire w_early_rsp = (mem_rsp_valid ? mem_rsp_tag != 8 : 1'b0);
 	always @(posedge clk) begin
 		r_last_early_valid <= (reset ? 1'b0 : w_gen_early_req);
-		r_last_early <= r_req2[178:171];
+		r_last_early <= w_req2_pa[31:4];
 	end
 	always @(posedge clk)
 		if (reset)
@@ -4052,7 +4063,7 @@ module nu_l1d (
 	always @(posedge clk)
 		if (t_push_miss) begin
 			r_mem_q[r_mq_tail_ptr[2:0]] <= t_req2_pa;
-			r_mq_addr[r_mq_tail_ptr[2:0]] <= r_req2[178:171];
+			r_mq_addr[r_mq_tail_ptr[2:0]] <= r_req2[180:171];
 			r_mq_dbg_addr[r_mq_tail_ptr[2:0]] <= w_tlb_pa[31:0];
 			r_mq_mask[r_mq_tail_ptr[2:0]] <= t_mq_mask & {16 {r_req2[166]}};
 			r_mq_op[r_mq_tail_ptr[2:0]] <= r_req2[162-:4];
@@ -4086,7 +4097,7 @@ module nu_l1d (
 			localparam i = _gv_i_2;
 			assign w_hit_busy_addrs[i] = (t_pop_mq && (r_mq_head_ptr[2:0] == i) ? 1'b0 : (r_mq_addr_valid[i] ? r_mq_addr[i] == t_cache_idx : 1'b0));
 			assign w_addr_intersect[i] = |(r_mq_mask[i] & t_req_mask);
-			assign w_hit_busy_line2[i] = (r_mq_addr_valid[i] ? r_mq_addr[i] == t_cache_idx2 : 1'b0);
+			assign w_hit_busy_line2[i] = (r_mq_addr_valid[i] ? r_mq_addr[i][7:0] == t_cache_idx2[7:0] : 1'b0);
 			assign w_hit_busy_addrs2[i] = w_hit_busy_line2[i] & w_addr_intersect[i];
 			assign w_unaligned_in_mq[i] = (r_mq_addr_valid[i] ? r_mq_is_unaligned[i] : 1'b0);
 		end
@@ -4095,7 +4106,7 @@ module nu_l1d (
 		r_hit_busy_addr <= (reset ? 1'b0 : |w_hit_busy_addrs);
 		r_hit_busy_addr2 <= (reset ? 1'b0 : |w_hit_busy_addrs2);
 		r_hit_busy_line2 <= (reset ? 1'b0 : |w_hit_busy_line2);
-		r_fwd_busy_addr2 <= (reset ? 1'b0 : t_push_miss & (t_cache_idx2 == r_cache_idx2));
+		r_fwd_busy_addr2 <= (reset ? 1'b0 : t_push_miss & (t_cache_idx2[7:0] == r_cache_idx2[7:0]));
 		r_pop_busy_addr2 <= (reset ? 1'b0 : t_pop_mq);
 		r_hit_busy_addrs <= (t_got_req ? w_hit_busy_addrs : {N_MQ_ENTRIES {1'b1}});
 		r_hit_busy_addrs2 <= (t_got_req2 ? w_hit_busy_addrs2 : {N_MQ_ENTRIES {1'b1}});
@@ -4214,27 +4225,30 @@ module nu_l1d (
 	always @(*) begin
 		if (_sv2v_0)
 			;
-		t_array_wr_addr = (mem_rsp_reload ? mem_rsp_addr[11:IDX_START] : r_cache_idx);
+		t_array_wr_addr = (mem_rsp_reload ? mem_rsp_addr[13:IDX_START] : r_cache_idx);
 		t_array_wr_data = (mem_rsp_reload ? mem_rsp_load_data : t_store_shift);
 		t_array_wr_en = mem_rsp_reload | t_wr_array;
 	end
-	always @(negedge clk)
+	always @(negedge clk) begin
+		if (mem_rsp_reload)
+			;
 		if (mem_rsp_reload & t_wr_array)
 			$stop;
+	end
 	ram2r1w #(
 		.WIDTH(N_TAG_BITS),
-		.LG_DEPTH(8)
+		.LG_DEPTH(10)
 	) dc_tag(
 		.clk(clk),
 		.rd_addr0(t_cache_idx),
 		.rd_addr1(t_cache_idx2),
-		.wr_addr(mem_rsp_addr[11:IDX_START]),
-		.wr_data(mem_rsp_addr[31:IDX_STOP]),
+		.wr_addr(mem_rsp_addr[13:IDX_START]),
+		.wr_data(mem_rsp_addr[31:12]),
 		.wr_en(mem_rsp_reload),
 		.rd_data0(r_tag_out),
 		.rd_data1(r_tag_out2)
 	);
-	ram2r1w_l1d_data #(.LG_DEPTH(8)) dc_data(
+	ram2r1w_l1d_data #(.LG_DEPTH(10)) dc_data(
 		.clk(clk),
 		.rd_addr0(t_cache_idx),
 		.rd_addr1(t_cache_idx2),
@@ -4247,7 +4261,7 @@ module nu_l1d (
 	);
 	reg t_dirty_value;
 	reg t_write_dirty_en;
-	reg [7:0] t_dirty_wr_addr;
+	reg [9:0] t_dirty_wr_addr;
 	always @(*) begin
 		if (_sv2v_0)
 			;
@@ -4257,11 +4271,11 @@ module nu_l1d (
 		if (t_mark_invalid)
 			t_write_dirty_en = 1'b1;
 		else if (t_push_eb) begin
-			t_dirty_wr_addr = n_port1_req_addr[11:IDX_START];
+			t_dirty_wr_addr = n_port1_req_addr[13:IDX_START];
 			t_write_dirty_en = 1'b1;
 		end
 		else if (mem_rsp_reload) begin
-			t_dirty_wr_addr = mem_rsp_addr[11:IDX_START];
+			t_dirty_wr_addr = mem_rsp_addr[13:IDX_START];
 			t_write_dirty_en = 1'b1;
 		end
 		else if (t_wr_array) begin
@@ -4271,7 +4285,7 @@ module nu_l1d (
 	end
 	ram2r1w #(
 		.WIDTH(1),
-		.LG_DEPTH(8)
+		.LG_DEPTH(10)
 	) dc_dirty(
 		.clk(clk),
 		.rd_addr0(t_cache_idx),
@@ -4284,7 +4298,7 @@ module nu_l1d (
 	);
 	reg t_valid_value;
 	reg t_write_valid_en;
-	reg [7:0] t_valid_wr_addr;
+	reg [9:0] t_valid_wr_addr;
 	always @(*) begin
 		if (_sv2v_0)
 			;
@@ -4295,17 +4309,17 @@ module nu_l1d (
 			t_write_valid_en = 1'b1;
 		else if (t_push_eb) begin
 			t_write_valid_en = 1'b1;
-			t_valid_wr_addr = n_port1_req_addr[11:IDX_START];
+			t_valid_wr_addr = n_port1_req_addr[13:IDX_START];
 		end
 		else if (mem_rsp_reload) begin
-			t_valid_wr_addr = mem_rsp_addr[11:IDX_START];
+			t_valid_wr_addr = mem_rsp_addr[13:IDX_START];
 			t_valid_value = !r_inhibit_write;
 			t_write_valid_en = 1'b1;
 		end
 	end
 	ram2r1w #(
 		.WIDTH(1),
-		.LG_DEPTH(8)
+		.LG_DEPTH(10)
 	) dc_valid(
 		.clk(clk),
 		.rd_addr0(t_cache_idx),
@@ -4450,6 +4464,10 @@ module nu_l1d (
 				t_amo32_data = r_req[99:68];
 				t_amo64_data = r_req[131:68];
 			end
+			5'd4: begin
+				t_amo32_data = t_shift[31:0] ^ r_req[99:68];
+				t_amo64_data = t_shift[63:0] ^ r_req[131:68];
+			end
 			5'd8: begin
 				t_amo32_data = t_shift[31:0] | r_req[99:68];
 				t_amo64_data = t_shift[63:0] | r_req[131:68];
@@ -4525,7 +4543,7 @@ module nu_l1d (
 			4'd8: begin
 				t_rsp_data = {63'd0, ~w_match_link};
 				t_array_data = (t_store_shift & t_store_mask) | (~t_store_mask & t_data);
-				t_wr_store = (w_match_link && t_hit_cache) && ((r_is_retry || r_did_reload) & !r_req[151]);
+				t_wr_store = ((w_match_link & t_hit_cache) & (r_is_retry | r_did_reload)) & !r_req[151];
 				t_rsp_dst_valid = r_req[132] & t_hit_cache;
 			end
 			4'd14: begin
@@ -4533,14 +4551,14 @@ module nu_l1d (
 				t_rsp_dst_valid = r_req[132] & t_hit_cache;
 				t_store_shift = {96'd0, t_amo32_data} << {r_req[170:167], 3'd0};
 				t_array_data = (t_store_shift & t_store_mask) | (~t_store_mask & t_data);
-				t_wr_store = t_hit_cache && ((r_is_retry || r_did_reload) & !r_req[151]);
+				t_wr_store = (t_hit_cache & (r_is_retry | r_did_reload)) & !r_req[151];
 			end
 			4'd15: begin
 				t_rsp_data = t_shift[63:0];
 				t_rsp_dst_valid = r_req[132] & t_hit_cache;
 				t_store_shift = {64'd0, t_amo64_data} << {r_req[170:167], 3'd0};
 				t_array_data = (t_store_shift & t_store_mask) | (~t_store_mask & t_data);
-				t_wr_store = t_hit_cache && ((r_is_retry || r_did_reload) & !r_req[151]);
+				t_wr_store = (t_hit_cache & (r_is_retry | r_did_reload)) & !r_req[151];
 			end
 			default:
 				;
@@ -4557,11 +4575,11 @@ module nu_l1d (
 	wire w_st_amo_grad = (t_mem_head[166] ? r_graduated[t_mem_head[144-:5]] == 2'b10 : 1'b1);
 	wire w_tlb_st_exc = ((w_tlb_hit & paging_active) & (r_req2[166] | r_req2[164])) & !w_tlb_writable;
 	wire w_tlb_st_not_dirty = (((w_tlb_hit & paging_active) & (r_req2[166] | r_req2[164])) & w_tlb_writable) & !w_tlb_dirty;
-	wire w_flush_hit = (r_tag_out == l2_probe_addr[31:IDX_STOP]) & r_valid_out;
+	wire w_flush_hit = (r_tag_out == l2_probe_addr[31:12]) & r_valid_out;
 	reg [147:0] t_core_mem_rsp;
 	reg t_core_mem_rsp_valid;
 	wire w_got_reload_pf = page_walk_rsp_valid & page_walk_rsp[71];
-	wire w_port2_rd_hit = t_port2_hit_cache && (!r_hit_busy_addr2 & !r_pending_tlb_miss);
+	wire w_port2_rd_hit = w_port2_hit_cache && (!r_hit_busy_addr2 & !r_pending_tlb_miss);
 	always @(*) begin
 		if (_sv2v_0)
 			;
@@ -4657,7 +4675,7 @@ module nu_l1d (
 	wire w_got_hit_or_idle = (r_got_req ? w_cache_port1_hit : 1'b1);
 	wire w_got_hit = (r_got_req ? w_cache_port1_hit : 1'b0);
 	wire w_got_clean_miss = (r_got_req ? w_cache_port1_clean_miss : 1'b0);
-	wire w_mh_block = (r_got_req && r_last_wr) && (r_cache_idx == t_mem_head[178:171]);
+	wire w_mh_block = (r_got_req && r_last_wr) && (r_cache_idx == t_mem_head[180:171]);
 	wire w_got_rd_retry = ((((!w_mh_block & !mem_q_empty) & w_got_hit) & !r_lock_cache) & !n_pending_tlb_miss) & !(t_mem_head[166] | t_mem_head[164]);
 	reg t_new_req;
 	reg [6:0] t_new_req_c;
@@ -4665,12 +4683,12 @@ module nu_l1d (
 	always @(*) begin
 		if (_sv2v_0)
 			;
-		t_cm_block = (r_got_req && r_last_wr) && (r_cache_idx == core_mem_va_req[178:171]);
+		t_cm_block = (r_got_req && r_last_wr) && (r_cache_idx == core_mem_va_req[180:171]);
 		t_cm_block_stall = t_cm_block && !(r_did_reload || r_is_retry);
 		t_new_req_c[0] = w_got_hit_or_idle;
 		t_new_req_c[1] = !(mem_q_almost_full | mem_q_full);
 		t_new_req_c[2] = 1'b1;
-		t_new_req_c[3] = !((r_last_wr2 & (r_cache_idx2 == core_mem_va_req[178:171])) & !core_mem_va_req[166]);
+		t_new_req_c[3] = !((r_last_wr2 & (r_cache_idx2 == core_mem_va_req[180:171])) & !core_mem_va_req[166]);
 		t_new_req_c[4] = !(n_pending_tlb_miss | r_pending_tlb_miss);
 		t_new_req_c[5] = !t_cm_block_stall;
 		t_new_req_c[6] = !r_rob_inflight[core_mem_va_req[144-:5]];
@@ -4688,7 +4706,6 @@ module nu_l1d (
 		t_reload_tlb = 1'b0;
 		n_page_walk_req_valid = 1'b0;
 		t_got_rd_retry = 1'b0;
-		t_port2_hit_cache = w_port2_hit_cache;
 		n_state = r_state;
 		t_miss_idx = r_miss_idx;
 		t_miss_addr = r_miss_addr;
@@ -4733,7 +4750,7 @@ module nu_l1d (
 		n_q_priority = !r_q_priority;
 		n_did_reload = 1'b0;
 		n_lock_cache = r_lock_cache;
-		t_mh_block = (r_got_req && r_last_wr) && (r_cache_idx == t_mem_head[178:171]);
+		t_mh_block = (r_got_req && r_last_wr) && (r_cache_idx == t_mem_head[180:171]);
 		case (r_state)
 			4'd0: begin
 				n_state = 4'd1;
@@ -4742,7 +4759,7 @@ module nu_l1d (
 			4'd1: begin
 				t_cache_idx = r_cache_idx + 'd1;
 				t_mark_invalid = 1'b1;
-				if (r_cache_idx == 255) begin
+				if (r_cache_idx == 1023) begin
 					n_state = 4'd2;
 					n_flush_complete = 1'b1;
 				end
@@ -4767,7 +4784,7 @@ module nu_l1d (
 						t_dirty_miss = 1'b1;
 						n_inhibit_write = 1'b1;
 						if ((r_hit_busy_addr && r_is_retry) || !r_hit_busy_addr) begin
-							n_port1_req_addr = {r_tag_out, r_cache_idx, 4'd0};
+							n_port1_req_addr = {r_tag_out, r_cache_idx[7:0], 4'd0};
 							n_port1_req_opcode = 4'd7;
 							n_port1_req_store_data = t_data;
 							n_inhibit_write = 1'b1;
@@ -4792,7 +4809,7 @@ module nu_l1d (
 							t_miss_addr = r_req[230-:64];
 							t_cache_idx = r_cache_idx;
 							if ((rr_cache_idx == r_cache_idx) && rr_last_wr) begin
-								n_port1_req_addr = {r_tag_out, r_cache_idx, 4'd0};
+								n_port1_req_addr = {r_tag_out, r_cache_idx[7:0], 4'd0};
 								n_lock_cache = 1'b1;
 								n_port1_req_opcode = 4'd7;
 								n_port1_req_tag = 8;
@@ -4828,7 +4845,7 @@ module nu_l1d (
 								core_store_data_ack = 1'b1;
 								n_req = t_mem_head;
 								n_req[131-:64] = core_store_data[68-:64];
-								t_cache_idx = t_mem_head[178:171];
+								t_cache_idx = t_mem_head[180:171];
 								t_cache_tag = t_mem_head[198:179];
 								t_addr = t_mem_head[230-:64];
 								t_got_req = 1'b1;
@@ -4843,7 +4860,7 @@ module nu_l1d (
 						else begin
 							t_pop_mq = 1'b1;
 							n_req = t_mem_head;
-							t_cache_idx = t_mem_head[178:171];
+							t_cache_idx = t_mem_head[180:171];
 							t_cache_tag = t_mem_head[198:179];
 							t_addr = t_mem_head[230-:64];
 							t_got_req = 1'b1;
@@ -4868,7 +4885,7 @@ module nu_l1d (
 						$stop;
 					if (r_got_req && r_last_wr)
 						$stop;
-					t_cache_idx = l2_probe_addr[11:IDX_START];
+					t_cache_idx = l2_probe_addr[13:IDX_START];
 					n_flush_cl_req = 1'b0;
 					n_flush_was_active = 1'b1;
 					n_state = 4'd9;
@@ -4880,7 +4897,7 @@ module nu_l1d (
 				n_port1_req_store_data = t_data;
 			end
 			4'd5: begin
-				t_cache_idx = r_req[178:171];
+				t_cache_idx = r_req[180:171];
 				t_cache_tag = r_req[198:179];
 				n_last_wr = r_req[166];
 				t_got_req = 1'b1;
@@ -4894,7 +4911,7 @@ module nu_l1d (
 					n_inhibit_write = 1'b0;
 				end
 			4'd11: begin
-				t_cache_idx = r_req[178:171];
+				t_cache_idx = r_req[180:171];
 				t_cache_tag = r_req[198:179];
 				n_last_wr = r_req[166];
 				t_got_req = 1'b1;
@@ -4903,10 +4920,10 @@ module nu_l1d (
 				n_state = 4'd2;
 			end
 			4'd9: begin
-				if ((w_flush_hit & r_link_reg_val) & (r_link_reg[31:0] == {r_tag_out, r_cache_idx, 4'd0}))
+				if ((w_flush_hit & r_link_reg_val) & (r_link_reg[31:0] == {r_tag_out, r_cache_idx[7:0], 4'd0}))
 					$stop;
 				if (r_dirty_out & w_flush_hit) begin
-					n_port1_req_addr = {r_tag_out, r_cache_idx, 4'd0};
+					n_port1_req_addr = {r_tag_out, r_cache_idx[7:0], 4'd0};
 					n_port1_req_opcode = 4'd7;
 					n_port1_req_store_data = t_data;
 					n_state = 4'd10;
@@ -4932,17 +4949,17 @@ module nu_l1d (
 				if (!r_dirty_out) begin
 					t_mark_invalid = 1'b1;
 					t_cache_idx = r_cache_idx + 'd1;
-					if (r_cache_idx == 255) begin
+					if (r_cache_idx == 1023) begin
 						n_state = 4'd2;
 						n_flush_complete = 1'b1;
 					end
 				end
 				else begin
-					n_port1_req_addr = {r_tag_out, r_cache_idx, 4'd0};
+					n_port1_req_addr = {r_tag_out, r_cache_idx[7:0], 4'd0};
 					n_port1_req_opcode = 4'd7;
 					n_port1_req_store_data = t_data;
 					n_port1_req_tag = {1'b1, {3 {1'b1}}};
-					n_state = (r_cache_idx == 255 ? 4'd8 : 4'd7);
+					n_state = (r_cache_idx == 1023 ? 4'd8 : 4'd7);
 					n_inhibit_write = 1'b1;
 					t_push_eb = 1'b1;
 				end
@@ -4970,7 +4987,7 @@ module nu_l1d (
 				else if (n_flush_cl_req & w_queues_drained) begin
 					n_state = 4'd9;
 					n_flush_cl_req = 1'b0;
-					t_cache_idx = l2_probe_addr[11:IDX_START];
+					t_cache_idx = l2_probe_addr[13:IDX_START];
 					n_flush_was_active = 1'b0;
 				end
 			4'd13: begin
@@ -4993,7 +5010,7 @@ module nu_l1d (
 			$stop;
 		end
 	end
-	wire w_reload_line = ((core_mem_va_req[178:171] == r_miss_idx) & (r_state != 4'd2)) | ((core_mem_va_req[178:171] == t_miss_idx) & t_got_miss);
+	wire w_reload_line = ((core_mem_va_req[180:171] == r_miss_idx) & (r_state != 4'd2)) | ((core_mem_va_req[180:171] == t_miss_idx) & t_got_miss);
 	always @(*) begin
 		if (_sv2v_0)
 			;
@@ -5013,7 +5030,7 @@ module nu_l1d (
 			n_req2[150-:5] = (r_req2[166] | r_req2[164] ? 5'd15 : 5'd13);
 		end
 		else if (t_replay_req2) begin
-			t_cache_idx2 = r_req2[178:171];
+			t_cache_idx2 = r_req2[180:171];
 			t_cache_tag2 = r_req2[198:179];
 			t_got_req2 = 1'b1;
 			t_tlb_xlat = 1'b1;
@@ -5021,7 +5038,7 @@ module nu_l1d (
 			n_last_wr2 = r_req2[166];
 		end
 		else if (t_accept) begin
-			t_cache_idx2 = core_mem_va_req[178:171];
+			t_cache_idx2 = core_mem_va_req[180:171];
 			t_cache_tag2 = core_mem_va_req[198:179];
 			n_req2 = core_mem_va_req;
 			core_mem_va_req_ack = 1'b1;
@@ -6559,12 +6576,13 @@ module exec (
 	input wire branch_valid;
 	input wire branch_fault;
 	input wire [639:0] counters;
-	localparam N_INT_SCHED_ENTRIES = 4;
+	localparam N_INT_SCHED0_ENTRIES = 8;
+	localparam N_INT_SCHED1_ENTRIES = 4;
 	localparam N_MEM_SCHED_ENTRIES = 4;
 	localparam N_MQ_ENTRIES = 4;
 	localparam N_MDQ_ENTRIES = 8;
 	localparam N_INT_PRF_ENTRIES = 128;
-	localparam N_UQ_ENTRIES = 16;
+	localparam N_UQ_ENTRIES = 8;
 	localparam N_MEM_UQ_ENTRIES = 8;
 	localparam N_MEM_DQ_ENTRIES = 8;
 	reg [127:0] r_prf_inflight;
@@ -6631,39 +6649,39 @@ module exec (
 	reg [63:0] t_pc;
 	reg [63:0] t_pc_2;
 	wire t_srcs_rdy;
-	reg [3:0] r_alu_sched_valid;
+	reg [7:0] r_alu_sched_valid;
 	reg [3:0] r_alu_sched_valid2;
-	wire [2:0] t_alu_sched_alloc_ptr;
+	wire [3:0] t_alu_sched_alloc_ptr;
 	wire [2:0] t_alu_sched_alloc_ptr2;
-	reg [3:0] t_alu_alloc_entry;
-	reg [3:0] t_alu_select_entry;
+	reg [7:0] t_alu_alloc_entry;
+	reg [7:0] t_alu_select_entry;
 	reg [3:0] t_alu_alloc_entry2;
 	reg [3:0] t_alu_select_entry2;
-	reg [251:0] r_alu_sched_uops [3:0];
+	reg [251:0] r_alu_sched_uops [7:0];
 	reg [251:0] t_picked_uop;
 	reg [251:0] r_alu_sched_uops2 [3:0];
 	reg [251:0] t_picked_uop2;
-	reg [3:0] t_alu_entry_rdy;
+	reg [7:0] t_alu_entry_rdy;
+	wire [3:0] t_alu_sched_select_ptr;
 	reg [3:0] t_alu_entry_rdy2;
-	wire [2:0] t_alu_sched_select_ptr;
 	wire [2:0] t_alu_sched_select_ptr2;
-	reg [3:0] r_alu_srcA_rdy;
-	reg [3:0] r_alu_srcB_rdy;
+	reg [7:0] r_alu_srcA_rdy;
+	reg [7:0] r_alu_srcB_rdy;
 	reg [3:0] r_alu_srcA_rdy2;
 	reg [3:0] r_alu_srcB_rdy2;
-	reg [3:0] t_alu_srcA_match;
-	reg [3:0] t_alu_srcB_match;
+	reg [7:0] t_alu_srcA_match;
+	reg [7:0] t_alu_srcB_match;
 	reg [3:0] t_alu_srcA_match2;
 	reg [3:0] t_alu_srcB_match2;
 	reg t_alu_alloc_srcA_match;
 	reg t_alu_alloc_srcB_match;
 	reg t_alu_alloc_srcA_match2;
 	reg t_alu_alloc_srcB_match2;
-	wire [3:0] w_alu_sched_oldest_ready;
+	wire [7:0] w_alu_sched_oldest_ready;
 	wire [3:0] w_alu_sched_oldest_ready2;
-	reg [3:0] t_alu_sched_mask_valid;
+	reg [7:0] t_alu_sched_mask_valid;
 	reg [3:0] t_alu_sched_mask_valid2;
-	reg [3:0] r_alu_sched_matrix [3:0];
+	reg [7:0] r_alu_sched_matrix [7:0];
 	reg [3:0] r_alu_sched_matrix2 [3:0];
 	reg [3:0] r_mem_sched_valid;
 	reg [3:0] r_mem_sched_store;
@@ -6791,7 +6809,7 @@ module exec (
 	wire t_div_complete;
 	reg [31:0] r_uq_wait;
 	reg [31:0] r_mq_wait;
-	reg [251:0] r_uq [0:15];
+	reg [251:0] r_uq [0:7];
 	reg [251:0] uq;
 	reg [251:0] uq2;
 	reg [251:0] int_uop;
@@ -6805,14 +6823,14 @@ module exec (
 	reg t_uq_full;
 	reg t_uq_next_full;
 	reg t_uq_next_empty;
-	reg [4:0] r_uq_head_ptr;
-	reg [4:0] n_uq_head_ptr;
-	reg [4:0] r_uq_tail_ptr;
-	reg [4:0] n_uq_tail_ptr;
-	reg [4:0] r_uq_next_head_ptr;
-	reg [4:0] n_uq_next_head_ptr;
-	reg [4:0] r_uq_next_tail_ptr;
-	reg [4:0] n_uq_next_tail_ptr;
+	reg [3:0] r_uq_head_ptr;
+	reg [3:0] n_uq_head_ptr;
+	reg [3:0] r_uq_tail_ptr;
+	reg [3:0] n_uq_tail_ptr;
+	reg [3:0] r_uq_next_head_ptr;
+	reg [3:0] n_uq_next_head_ptr;
+	reg [3:0] r_uq_next_tail_ptr;
+	reg [3:0] n_uq_next_tail_ptr;
 	reg [251:0] r_mem_uq [0:7];
 	reg [251:0] t_mem_uq;
 	wire t_mem_uq_read;
@@ -7000,8 +7018,8 @@ module exec (
 	always @(*) begin
 		if (_sv2v_0)
 			;
-		t_uq = r_uq[r_uq_head_ptr[3:0]];
-		t_uq2 = r_uq[r_uq_next_head_ptr[3:0]];
+		t_uq = r_uq[r_uq_head_ptr[2:0]];
+		t_uq2 = r_uq[r_uq_next_head_ptr[2:0]];
 	end
 	wire w_alu_sched_avail = (&r_alu_sched_valid == 1'b0) & (t_flash_clear == 1'b0);
 	wire w_alu_sched_avail2 = (&r_alu_sched_valid2 == 1'b0) & (t_flash_clear == 1'b0);
@@ -7022,8 +7040,8 @@ module exec (
 		n_uq_next_tail_ptr = r_uq_next_tail_ptr;
 		t_uq_empty = r_uq_head_ptr == r_uq_tail_ptr;
 		t_uq_next_empty = r_uq_next_head_ptr == r_uq_tail_ptr;
-		t_uq_full = (r_uq_head_ptr != r_uq_tail_ptr) && (r_uq_head_ptr[3:0] == r_uq_tail_ptr[3:0]);
-		t_uq_next_full = (r_uq_head_ptr != r_uq_next_tail_ptr) && (r_uq_head_ptr[3:0] == r_uq_next_tail_ptr[3:0]);
+		t_uq_full = (r_uq_head_ptr != r_uq_tail_ptr) && (r_uq_head_ptr[2:0] == r_uq_tail_ptr[2:0]);
+		t_uq_next_full = (r_uq_head_ptr != r_uq_next_tail_ptr) && (r_uq_head_ptr[2:0] == r_uq_next_tail_ptr[2:0]);
 		t_push_two_int = ((uq_push && uq_push_two) && uq_uop[20]) && uq_uop_two[20];
 		t_push_one_int = ((uq_push && uq_uop[20]) || (uq_push_two && uq_uop_two[20])) && !t_push_two_int;
 		uq = (w_uq_swizzle ? t_uq2 : t_uq);
@@ -7047,18 +7065,18 @@ module exec (
 	end
 	always @(posedge clk)
 		if (t_push_two_int) begin
-			r_uq[r_uq_tail_ptr[3:0]] <= uq_uop;
-			r_uq[r_uq_next_tail_ptr[3:0]] <= uq_uop_two;
+			r_uq[r_uq_tail_ptr[2:0]] <= uq_uop;
+			r_uq[r_uq_next_tail_ptr[2:0]] <= uq_uop_two;
 		end
 		else if (t_push_one_int)
-			r_uq[r_uq_tail_ptr[3:0]] <= (uq_uop[20] ? uq_uop : uq_uop_two);
+			r_uq[r_uq_tail_ptr[2:0]] <= (uq_uop[20] ? uq_uop : uq_uop_two);
 	reg [63:0] r_cycle;
 	reg [63:0] r_retired_insns;
 	reg [63:0] r_branches;
 	reg [63:0] r_branch_faults;
 	reg [63:0] r_mtime;
 	reg [63:0] r_mtimecmp;
-	wire w_mtip = r_cycle >= r_mtimecmp;
+	wire w_mtip = r_mtime >= r_mtimecmp;
 	always @(posedge clk)
 		if (reset)
 			r_mtimecmp <= 64'd0;
@@ -7103,11 +7121,11 @@ module exec (
 		t_mem_srcA = (r_fwd_int_mem_srcA ? r_int_result : (r_fwd_mem_mem_srcA ? r_mem_result : (r_fwd_int2_mem_srcA ? r_int_result2 : w_mem_srcA)));
 		t_mem_srcB = (r_fwd_int_mem_srcB ? r_int_result : (r_fwd_mem_mem_srcB ? r_mem_result : (r_fwd_int2_mem_srcB ? r_int_result2 : w_mem_srcB)));
 	end
-	find_first_set #(2) ffs_int_sched_alloc(
+	find_first_set #(3) ffs_int_sched_alloc(
 		.in(~r_alu_sched_valid),
 		.y(t_alu_sched_alloc_ptr)
 	);
-	find_first_set #(2) ffs_int_sched_select(
+	find_first_set #(3) ffs_int_sched_select(
 		.in(w_alu_sched_oldest_ready),
 		.y(t_alu_sched_select_ptr)
 	);
@@ -7125,9 +7143,9 @@ module exec (
 		t_alu_alloc_entry = 'd0;
 		t_alu_select_entry = 'd0;
 		if (w_alloc_uq)
-			t_alu_alloc_entry[t_alu_sched_alloc_ptr[1:0]] = 1'b1;
+			t_alu_alloc_entry[t_alu_sched_alloc_ptr[2:0]] = 1'b1;
 		if (t_alu_entry_rdy != 'd0)
-			t_alu_select_entry[t_alu_sched_select_ptr[1:0]] = 1'b1;
+			t_alu_select_entry[t_alu_sched_select_ptr[2:0]] = 1'b1;
 	end
 	always @(*) begin
 		if (_sv2v_0)
@@ -7142,7 +7160,7 @@ module exec (
 	always @(*) begin
 		if (_sv2v_0)
 			;
-		t_picked_uop = r_alu_sched_uops[t_alu_sched_select_ptr[1:0]];
+		t_picked_uop = r_alu_sched_uops[t_alu_sched_select_ptr[2:0]];
 	end
 	always @(*) begin
 		if (_sv2v_0)
@@ -7169,7 +7187,7 @@ module exec (
 	end
 	genvar _gv_i_1;
 	generate
-		for (_gv_i_1 = 0; _gv_i_1 < N_INT_SCHED_ENTRIES; _gv_i_1 = _gv_i_1 + 1) begin : genblk1
+		for (_gv_i_1 = 0; _gv_i_1 < N_INT_SCHED0_ENTRIES; _gv_i_1 = _gv_i_1 + 1) begin : genblk1
 			localparam i = _gv_i_1;
 			assign w_alu_sched_oldest_ready[i] = t_alu_entry_rdy[i] & ~(|(t_alu_entry_rdy & r_alu_sched_matrix[i]));
 			always @(posedge clk)
@@ -7183,7 +7201,7 @@ module exec (
 	endgenerate
 	genvar _gv_i_2;
 	generate
-		for (_gv_i_2 = 0; _gv_i_2 < N_INT_SCHED_ENTRIES; _gv_i_2 = _gv_i_2 + 1) begin : genblk2
+		for (_gv_i_2 = 0; _gv_i_2 < N_INT_SCHED1_ENTRIES; _gv_i_2 = _gv_i_2 + 1) begin : genblk2
 			localparam i = _gv_i_2;
 			assign w_alu_sched_oldest_ready2[i] = t_alu_entry_rdy2[i] & ~(|(t_alu_entry_rdy2 & r_alu_sched_matrix2[i]));
 			always @(posedge clk)
@@ -7229,7 +7247,7 @@ module exec (
 		end
 	endfunction
 	generate
-		for (_gv_i_3 = 0; _gv_i_3 < N_INT_SCHED_ENTRIES; _gv_i_3 = _gv_i_3 + 1) begin : genblk3
+		for (_gv_i_3 = 0; _gv_i_3 < N_INT_SCHED0_ENTRIES; _gv_i_3 = _gv_i_3 + 1) begin : genblk3
 			localparam i = _gv_i_3;
 			always @(*) begin
 				if (_sv2v_0)
@@ -7259,7 +7277,7 @@ module exec (
 	endgenerate
 	genvar _gv_i_4;
 	generate
-		for (_gv_i_4 = 0; _gv_i_4 < N_INT_SCHED_ENTRIES; _gv_i_4 = _gv_i_4 + 1) begin : genblk4
+		for (_gv_i_4 = 0; _gv_i_4 < N_INT_SCHED1_ENTRIES; _gv_i_4 = _gv_i_4 + 1) begin : genblk4
 			localparam i = _gv_i_4;
 			always @(*) begin
 				if (_sv2v_0)
@@ -7614,11 +7632,11 @@ module exec (
 			r_alu_sched_valid <= 'd0;
 		else begin
 			if (w_alloc_uq) begin
-				r_alu_sched_valid[t_alu_sched_alloc_ptr[1:0]] <= 1'b1;
-				r_alu_sched_uops[t_alu_sched_alloc_ptr[1:0]] <= uq;
+				r_alu_sched_valid[t_alu_sched_alloc_ptr[2:0]] <= 1'b1;
+				r_alu_sched_uops[t_alu_sched_alloc_ptr[2:0]] <= uq;
 			end
 			if (t_alu_entry_rdy != 'd0)
-				r_alu_sched_valid[t_alu_sched_select_ptr[1:0]] <= 1'b0;
+				r_alu_sched_valid[t_alu_sched_select_ptr[2:0]] <= 1'b0;
 		end
 	always @(posedge clk)
 		if (reset || t_flash_clear)
@@ -8909,7 +8927,7 @@ module l1d (
 	tlb_hits
 );
 	reg _sv2v_0;
-	localparam L1D_NUM_SETS = 256;
+	localparam L1D_NUM_SETS = 1024;
 	localparam L1D_CL_LEN = 16;
 	localparam L1D_CL_LEN_BITS = 128;
 	input wire clk;
@@ -8966,9 +8984,9 @@ module l1d (
 	localparam LG_DWORDS_PER_CL = 1;
 	localparam WORDS_PER_CL = 4;
 	localparam BYTES_PER_CL = 16;
-	localparam N_TAG_BITS = 52;
+	localparam N_TAG_BITS = 50;
 	localparam IDX_START = 4;
-	localparam IDX_STOP = 12;
+	localparam IDX_STOP = 14;
 	localparam WORD_START = 2;
 	localparam WORD_STOP = 4;
 	localparam DWORD_START = 3;
@@ -8995,31 +9013,31 @@ module l1d (
 	reg r_l2_probe_ack;
 	assign l2_probe_ack = r_l2_probe_ack;
 	reg [3:0] r_n_inflight;
-	reg [7:0] t_cache_idx;
-	reg [7:0] r_cache_idx;
-	reg [7:0] rr_cache_idx;
-	reg [51:0] t_cache_tag;
-	reg [51:0] r_cache_tag;
-	wire [51:0] r_tag_out;
-	reg [51:0] rr_cache_tag;
+	reg [9:0] t_cache_idx;
+	reg [9:0] r_cache_idx;
+	reg [9:0] rr_cache_idx;
+	reg [49:0] t_cache_tag;
+	reg [49:0] r_cache_tag;
+	wire [49:0] r_tag_out;
+	reg [49:0] rr_cache_tag;
 	wire r_valid_out;
 	wire r_dirty_out;
 	wire [127:0] r_array_out;
 	reg [127:0] t_data;
 	reg [127:0] t_data2;
-	reg [7:0] t_cache_idx2;
-	reg [7:0] r_cache_idx2;
-	reg [51:0] t_cache_tag2;
-	reg [51:0] r_cache_tag2;
-	wire [51:0] r_tag_out2;
+	reg [9:0] t_cache_idx2;
+	reg [9:0] r_cache_idx2;
+	reg [49:0] t_cache_tag2;
+	reg [49:0] r_cache_tag2;
+	wire [49:0] r_tag_out2;
 	wire r_valid_out2;
 	wire r_dirty_out2;
 	wire [127:0] r_array_out2;
-	reg [7:0] t_miss_idx;
-	reg [7:0] r_miss_idx;
+	reg [9:0] t_miss_idx;
+	reg [9:0] r_miss_idx;
 	reg [63:0] t_miss_addr;
 	reg [63:0] r_miss_addr;
-	reg [7:0] t_array_wr_addr;
+	reg [9:0] t_array_wr_addr;
 	reg [127:0] t_array_wr_data;
 	reg [127:0] r_array_wr_data;
 	reg t_array_wr_en;
@@ -9119,7 +9137,7 @@ module l1d (
 		t_req_mask = make_mask(core_mem_va_req);
 	end
 	reg [7:0] r_mq_addr_valid;
-	reg [7:0] r_mq_addr [7:0];
+	reg [9:0] r_mq_addr [7:0];
 	reg [15:0] r_mq_mask [7:0];
 	reg [63:0] r_mq_full_addr [7:0];
 	reg r_mq_is_load [7:0];
@@ -9257,7 +9275,7 @@ module l1d (
 	always @(posedge clk)
 		if (t_push_miss) begin
 			r_mem_q[r_mq_tail_ptr[2:0]] <= t_req2_pa;
-			r_mq_addr[r_mq_tail_ptr[2:0]] <= r_req2[178:171];
+			r_mq_addr[r_mq_tail_ptr[2:0]] <= r_req2[180:171];
 			r_mq_mask[r_mq_tail_ptr[2:0]] <= t_mq_mask & {16 {r_req2[166]}};
 			r_mq_op[r_mq_tail_ptr[2:0]] <= r_req2[162-:4];
 			r_mq_is_load[r_mq_tail_ptr[2:0]] <= r_req2[165];
@@ -9415,24 +9433,24 @@ module l1d (
 	always @(*) begin
 		if (_sv2v_0)
 			;
-		t_array_wr_addr = (mem_rsp_valid ? r_mem_req_addr[11:IDX_START] : r_cache_idx);
+		t_array_wr_addr = (mem_rsp_valid ? r_mem_req_addr[13:IDX_START] : r_cache_idx);
 		t_array_wr_data = (mem_rsp_valid ? mem_rsp_load_data : t_store_shift);
 		t_array_wr_en = (mem_rsp_valid && !((r_state == 4'd13) || (r_state == 4'd14))) || t_wr_array;
 	end
 	ram2r1w #(
 		.WIDTH(N_TAG_BITS),
-		.LG_DEPTH(8)
+		.LG_DEPTH(10)
 	) dc_tag(
 		.clk(clk),
 		.rd_addr0(t_cache_idx),
 		.rd_addr1(t_cache_idx2),
-		.wr_addr(r_mem_req_addr[11:IDX_START]),
+		.wr_addr(r_mem_req_addr[13:IDX_START]),
 		.wr_data(r_mem_req_addr[63:IDX_STOP]),
 		.wr_en(mem_rsp_valid & !((r_state == 4'd13) | (r_state == 4'd14))),
 		.rd_data0(r_tag_out),
 		.rd_data1(r_tag_out2)
 	);
-	ram2r1w_l1d_data #(.LG_DEPTH(8)) dc_data(
+	ram2r1w_l1d_data #(.LG_DEPTH(10)) dc_data(
 		.clk(clk),
 		.rd_addr0(t_cache_idx),
 		.rd_addr1(t_cache_idx2),
@@ -9445,7 +9463,7 @@ module l1d (
 	);
 	reg t_dirty_value;
 	reg t_write_dirty_en;
-	reg [7:0] t_dirty_wr_addr;
+	reg [9:0] t_dirty_wr_addr;
 	always @(*) begin
 		if (_sv2v_0)
 			;
@@ -9455,7 +9473,7 @@ module l1d (
 		if (t_mark_invalid)
 			t_write_dirty_en = 1'b1;
 		else if (mem_rsp_valid & !((r_state == 4'd13) | (r_state == 4'd14))) begin
-			t_dirty_wr_addr = r_mem_req_addr[11:IDX_START];
+			t_dirty_wr_addr = r_mem_req_addr[13:IDX_START];
 			t_write_dirty_en = 1'b1;
 		end
 		else if (t_wr_array) begin
@@ -9465,7 +9483,7 @@ module l1d (
 	end
 	ram2r1w #(
 		.WIDTH(1),
-		.LG_DEPTH(8)
+		.LG_DEPTH(10)
 	) dc_dirty(
 		.clk(clk),
 		.rd_addr0(t_cache_idx),
@@ -9478,7 +9496,7 @@ module l1d (
 	);
 	reg t_valid_value;
 	reg t_write_valid_en;
-	reg [7:0] t_valid_wr_addr;
+	reg [9:0] t_valid_wr_addr;
 	always @(*) begin
 		if (_sv2v_0)
 			;
@@ -9488,14 +9506,14 @@ module l1d (
 		if (t_mark_invalid)
 			t_write_valid_en = 1'b1;
 		else if (mem_rsp_valid & !((r_state == 4'd13) | (r_state == 4'd14))) begin
-			t_valid_wr_addr = r_mem_req_addr[11:IDX_START];
+			t_valid_wr_addr = r_mem_req_addr[13:IDX_START];
 			t_valid_value = !r_inhibit_write;
 			t_write_valid_en = 1'b1;
 		end
 	end
 	ram2r1w #(
 		.WIDTH(1),
-		.LG_DEPTH(8)
+		.LG_DEPTH(10)
 	) dc_valid(
 		.clk(clk),
 		.rd_addr0(t_cache_idx),
@@ -9818,8 +9836,8 @@ module l1d (
 		n_q_priority = !r_q_priority;
 		n_did_reload = 1'b0;
 		n_lock_cache = r_lock_cache;
-		t_mh_block = (r_got_req && r_last_wr) && (r_cache_idx == t_mem_head[178:171]);
-		t_cm_block = (r_got_req && r_last_wr) && (r_cache_idx == core_mem_va_req[178:171]);
+		t_mh_block = (r_got_req && r_last_wr) && (r_cache_idx == t_mem_head[180:171]);
+		t_cm_block = (r_got_req && r_last_wr) && (r_cache_idx == core_mem_va_req[180:171]);
 		t_cm_block_stall = t_cm_block && !(r_did_reload || r_is_retry);
 		case (r_state)
 			4'd0: begin
@@ -9829,7 +9847,7 @@ module l1d (
 			4'd1: begin
 				t_cache_idx = r_cache_idx + 'd1;
 				t_mark_invalid = 1'b1;
-				if (r_cache_idx == 255) begin
+				if (r_cache_idx == 1023) begin
 					n_state = 4'd2;
 					n_flush_complete = 1'b1;
 				end
@@ -9977,8 +9995,8 @@ module l1d (
 								core_store_data_ack = 1'b1;
 								n_req = t_mem_head;
 								n_req[131-:64] = core_store_data[68-:64];
-								t_cache_idx = t_mem_head[178:171];
-								t_cache_tag = t_mem_head[230:179];
+								t_cache_idx = t_mem_head[180:171];
+								t_cache_tag = t_mem_head[230:181];
 								t_addr = t_mem_head[230-:64];
 								t_got_req = 1'b1;
 								n_is_retry = 1'b1;
@@ -9992,8 +10010,8 @@ module l1d (
 						else begin
 							t_pop_mq = 1'b1;
 							n_req = t_mem_head;
-							t_cache_idx = t_mem_head[178:171];
-							t_cache_tag = t_mem_head[230:179];
+							t_cache_idx = t_mem_head[180:171];
+							t_cache_tag = t_mem_head[230:181];
 							t_addr = t_mem_head[230-:64];
 							t_got_req = 1'b1;
 							n_is_retry = 1'b1;
@@ -10002,9 +10020,9 @@ module l1d (
 						end
 					end
 				end
-				if (((((((core_mem_va_req_valid && !t_got_miss) && !(mem_q_almost_full || mem_q_full)) && !t_got_rd_retry) && !((r_last_wr2 && (r_cache_idx2 == core_mem_va_req[178:171])) && !core_mem_va_req[166])) && !(n_pending_tlb_miss | r_pending_tlb_miss)) && !t_cm_block_stall) && !r_rob_inflight[core_mem_va_req[144-:5]]) begin
-					t_cache_idx2 = core_mem_va_req[178:171];
-					t_cache_tag2 = core_mem_va_req[230:179];
+				if (((((((core_mem_va_req_valid && !t_got_miss) && !(mem_q_almost_full || mem_q_full)) && !t_got_rd_retry) && !((r_last_wr2 && (r_cache_idx2 == core_mem_va_req[180:171])) && !core_mem_va_req[166])) && !(n_pending_tlb_miss | r_pending_tlb_miss)) && !t_cm_block_stall) && !r_rob_inflight[core_mem_va_req[144-:5]]) begin
+					t_cache_idx2 = core_mem_va_req[180:171];
+					t_cache_tag2 = core_mem_va_req[230:181];
 					n_req2 = core_mem_va_req;
 					core_mem_va_req_ack = 1'b1;
 					t_got_req2 = 1'b1;
@@ -10032,7 +10050,7 @@ module l1d (
 						$stop;
 					if (r_got_req && r_last_wr)
 						$stop;
-					t_cache_idx = l2_probe_addr[11:IDX_START];
+					t_cache_idx = l2_probe_addr[13:IDX_START];
 					n_flush_cl_req = 1'b0;
 					n_flush_was_active = 1'b1;
 					n_state = 4'd8;
@@ -10058,8 +10076,8 @@ module l1d (
 					end
 				end
 			4'd10: begin
-				t_cache_idx = r_req[178:171];
-				t_cache_tag = r_req[230:179];
+				t_cache_idx = r_req[180:171];
+				t_cache_tag = r_req[230:181];
 				n_last_wr = r_req[166];
 				t_got_req = r_req[166] | (r_ack_ld_early == 1'b0);
 				t_addr = r_req[230-:64];
@@ -10093,7 +10111,7 @@ module l1d (
 				if (!r_dirty_out) begin
 					t_mark_invalid = 1'b1;
 					t_cache_idx = r_cache_idx + 'd1;
-					if (r_cache_idx == 255) begin
+					if (r_cache_idx == 1023) begin
 						n_state = 4'd2;
 						n_flush_complete = 1'b1;
 					end
@@ -10102,7 +10120,7 @@ module l1d (
 					n_mem_req_addr = {r_tag_out, r_cache_idx, 4'd0};
 					n_mem_req_opcode = 4'd7;
 					n_mem_req_store_data = t_data;
-					n_state = (r_cache_idx == 255 ? 4'd7 : 4'd6);
+					n_state = (r_cache_idx == 1023 ? 4'd7 : 4'd6);
 					n_inhibit_write = 1'b1;
 					n_mem_req_valid = 1'b1;
 				end
@@ -10136,7 +10154,7 @@ module l1d (
 				else if (n_flush_cl_req) begin
 					n_state = 4'd8;
 					n_flush_cl_req = 1'b0;
-					t_cache_idx = l2_probe_addr[11:IDX_START];
+					t_cache_idx = l2_probe_addr[13:IDX_START];
 					n_flush_was_active = 1'b0;
 				end
 			4'd12: begin
@@ -10599,6 +10617,7 @@ module core (
 	core_mark_dirty_valid,
 	core_mark_dirty_addr,
 	core_mark_dirty_rsp_valid,
+	pending_irq,
 	counters
 );
 	reg _sv2v_0;
@@ -10695,10 +10714,11 @@ module core (
 	output wire core_mark_dirty_valid;
 	output wire [63:0] core_mark_dirty_addr;
 	input wire core_mark_dirty_rsp_valid;
+	output reg pending_irq;
 	input wire [639:0] counters;
 	localparam N_PRF_ENTRIES = 128;
 	localparam N_ROB_ENTRIES = 32;
-	localparam N_UQ_ENTRIES = 16;
+	localparam N_UQ_ENTRIES = 8;
 	localparam N_DQ_ENTRIES = 4;
 	localparam HI_EBITS = 32;
 	reg t_push_dq_one;
@@ -10903,6 +10923,7 @@ module core (
 		.y(w_irq_id)
 	);
 	wire t_divide_ready;
+	always @(posedge clk) pending_irq <= (reset ? 1'b0 : w_any_irq);
 	always @(*) begin
 		if (_sv2v_0)
 			;
