@@ -257,6 +257,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
    localparam	      WAIT_ACK = 4'd7;
    localparam	      WAIT_REQ = 4'd8;
    localparam	      WR_BAD = 4'd9;
+   localparam	      RD_BAD = 4'd10;   
    
    wire				   w_reset = (M_AXI_ARESETN == 1'b0) | rv_reset;
    always@(posedge M_AXI_ACLK)
@@ -341,10 +342,18 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	    begin
 	       if(w_wr_req & w_bad_addr)
 		 begin
-		    n_ack_wr_early = 1'b1;
+		    n_tag = mem_req_tag;
+		    t_mem_req_gnt = 1'b1;
 		    n_state = WR_BAD;
 		 end
-	       else if(w_wr_req)
+	       else if(w_rd_req & w_bad_addr)
+		 begin
+		    n_tag = mem_req_tag;
+		    t_mem_req_gnt = 1'b1;
+		    n_state = RD_BAD;
+		 end
+	       else
+		 if(w_wr_req)
 		 begin
 		    n_addr = w_axi_addr;
 		    n_state = WR_CH;
@@ -413,9 +422,14 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	    end
 	  WR_BAD:
 	    begin
-	       n_mem_rsp_valid = r_ack_wr_early;
+	       n_mem_rsp_valid = 1'b1;
 	       n_state = IDLE;
-	    end	  
+	    end	
+	  RD_BAD:
+	    begin	
+	       n_mem_rsp_valid = 1'b1;
+	       n_state = IDLE;       
+	    end
 	endcase
      end // always@ (*)
 
@@ -430,9 +444,11 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	  begin
 	     r_load_data <= M_AXI_RDATA;
 	  end
+	else if(r_state == RD_BAD)
+	  begin
+	     r_load_data <= 'd0;
+	  end
      end // always @ (posedge M_AXI_ACLK)
-
-      
    
    assign last_addr = r_addr;
    assign last_data = r_load_data[31:0];
