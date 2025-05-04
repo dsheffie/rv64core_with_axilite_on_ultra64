@@ -109,7 +109,7 @@ module axi_is_the_worst_v1_0 #
    wire [31:0]					w_addrmask;
    
    wire [31:0] 					w_mem_req_addr;
-   wire [31:0] 					w_axi_addr = w_baseaddr+(w_mem_req_addr & w_addrmask);
+   wire [31:0] 					w_axi_addr = w_baseaddr+(w_mem_req_addr);
 
    wire [127:0]					w_mem_req_store_data;
    

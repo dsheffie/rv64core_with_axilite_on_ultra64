@@ -313,7 +313,7 @@ module axi_is_the_worst_v1_0_M00_AXI #
 	  end
      end // always@ (*)
 
-   wire [31:0] 					w_axi_addr = baseaddr+(cpuaddr & addrmask);
+   wire [31:0] 					w_axi_addr = baseaddr+cpuaddr;
    wire						w_bad_addr = cpuaddr > addrmask;
 
    wire						w_wr_req = mem_req_valid & (mem_opcode == 4'd7);
